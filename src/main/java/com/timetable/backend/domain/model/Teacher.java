@@ -1,6 +1,7 @@
 package com.timetable.backend.domain.model;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
 import jakarta.persistence.PrimaryKeyJoinColumn;
 import jakarta.persistence.Column;
 import jakarta.persistence.ManyToMany;
@@ -14,6 +15,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
+@Table(name = "teachers")
 @PrimaryKeyJoinColumn(name = "id")
 @Getter
 @Setter
