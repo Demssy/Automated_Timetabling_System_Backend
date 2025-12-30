@@ -1,9 +1,15 @@
 package com.timetable.backend.controller;
 
+import com.timetable.backend.domain.dto.DanceStyleDTO;
+import com.timetable.backend.domain.dto.DanceStylesResponse;
+import com.timetable.backend.domain.dto.RoomDTO;
+import com.timetable.backend.domain.dto.RoomsResponse;
+import com.timetable.backend.domain.mapper.DictionaryMapper;
 import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Room;
 import com.timetable.backend.domain.repository.DanceStyleRepository;
 import com.timetable.backend.domain.repository.RoomRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -13,46 +19,49 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/dictionaries")
+@RequiredArgsConstructor
 public class DictionaryController {
 
     private final RoomRepository roomRepository;
     private final DanceStyleRepository danceStyleRepository;
-
-    public DictionaryController(RoomRepository roomRepository, DanceStyleRepository danceStyleRepository) {
-        this.roomRepository = roomRepository;
-        this.danceStyleRepository = danceStyleRepository;
-    }
+    private final DictionaryMapper dictionaryMapper;
 
     // Rooms (ROLE_ADMIN)
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/rooms")
-    public ResponseEntity<Room> createRoom(@RequestBody Room room) {
+    public ResponseEntity<RoomDTO> createRoom(@RequestBody RoomDTO roomDTO) {
+        Room room = dictionaryMapper.toRoom(roomDTO);
         Room saved = roomRepository.save(room);
-        return ResponseEntity.ok(saved);
+        return ResponseEntity.ok(dictionaryMapper.toRoomDTO(saved));
     }
+
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/rooms")
-    public List<Room> listRooms() {
-        return roomRepository.findAll();
+    public ResponseEntity<RoomsResponse> listRooms() {
+        List<RoomDTO> rooms = roomRepository.findAll().stream()
+                .map(dictionaryMapper::toRoomDTO)
+                .toList();
+        return ResponseEntity.ok(new RoomsResponse(rooms));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/rooms/{id}")
-    public ResponseEntity<Room> getRoom(@PathVariable Long id) {
+    public ResponseEntity<RoomDTO> getRoom(@PathVariable Long id) {
         Optional<Room> r = roomRepository.findById(id);
-        return r.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+        return r.map(room -> ResponseEntity.ok(dictionaryMapper.toRoomDTO(room)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/rooms/{id}")
-    public ResponseEntity<Room> updateRoom(@PathVariable Long id, @RequestBody Room updated) {
+    public ResponseEntity<RoomDTO> updateRoom(@PathVariable Long id, @RequestBody RoomDTO updated) {
         return roomRepository.findById(id).map(r -> {
-            r.setName(updated.getName());
-            r.setCapacity(updated.getCapacity());
-            r.setAllowsParallelPrivate(updated.isAllowsParallelPrivate());
+            r.setName(updated.name());
+            r.setCapacity(updated.capacity());
+            r.setAllowsParallelPrivate(updated.allowsParallelPrivate());
             roomRepository.save(r);
-            return ResponseEntity.ok(r);
+            return ResponseEntity.ok(dictionaryMapper.toRoomDTO(r));
         }).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -69,31 +78,37 @@ public class DictionaryController {
     // Dance styles (ROLE_ADMIN)
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/styles")
-    public ResponseEntity<DanceStyle> createStyle(@RequestBody DanceStyle style) {
+    public ResponseEntity<DanceStyleDTO> createStyle(@RequestBody DanceStyleDTO styleDTO) {
+        DanceStyle style = dictionaryMapper.toDanceStyle(styleDTO);
         DanceStyle saved = danceStyleRepository.save(style);
-        return ResponseEntity.ok(saved);
+        return ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(saved));
     }
+
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/styles")
-    public List<DanceStyle> listStyles() {
-        return danceStyleRepository.findAll();
+    public ResponseEntity<DanceStylesResponse> listStyles() {
+        List<DanceStyleDTO> styles = danceStyleRepository.findAll().stream()
+                .map(dictionaryMapper::toDanceStyleDTO)
+                .toList();
+        return ResponseEntity.ok(new DanceStylesResponse(styles));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/styles/{id}")
-    public ResponseEntity<DanceStyle> getStyle(@PathVariable Long id) {
+    public ResponseEntity<DanceStyleDTO> getStyle(@PathVariable Long id) {
         Optional<DanceStyle> s = danceStyleRepository.findById(id);
-        return s.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+        return s.map(style -> ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(style)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/styles/{id}")
-    public ResponseEntity<DanceStyle> updateStyle(@PathVariable Long id, @RequestBody DanceStyle updated) {
+    public ResponseEntity<DanceStyleDTO> updateStyle(@PathVariable Long id, @RequestBody DanceStyleDTO updated) {
         return danceStyleRepository.findById(id).map(s -> {
-            s.setName(updated.getName());
+            s.setName(updated.name());
             danceStyleRepository.save(s);
-            return ResponseEntity.ok(s);
+            return ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(s));
         }).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -107,4 +122,3 @@ public class DictionaryController {
         return ResponseEntity.notFound().build();
     }
 }
-
