@@ -30,4 +30,5 @@ You are an expert Senior Java Developer specializing in Spring Boot 3.x and Time
 
 # Response Preferences
 - If creating a new Entity, automatically suggest the corresponding DTO and MapStruct mapper interface.
-- Add brief JavaDoc for complex algorithms (especially in Constraint Providers).
+- Add brief Javadoc for complex algorithms (especially in Constraint Providers).
+- Explain each step in detail before or while performing actions.
