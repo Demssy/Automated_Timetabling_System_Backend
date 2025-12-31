@@ -1,4 +1,4 @@
-package com.timetable.backend.security.dto;
+package com.timetable.backend.domain.dto;
 
 import java.time.LocalDate;
 
