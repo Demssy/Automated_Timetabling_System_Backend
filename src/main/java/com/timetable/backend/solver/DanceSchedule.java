@@ -8,6 +8,7 @@ import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import com.timetable.backend.domain.model.Lesson;
+import com.timetable.backend.domain.model.ResourceUnavailability;
 import com.timetable.backend.domain.model.Room;
 import com.timetable.backend.domain.model.Teacher;
 import com.timetable.backend.domain.model.Timeslot;
@@ -42,6 +43,9 @@ public class DanceSchedule {
     @ProblemFactCollectionProperty
     private List<Teacher> teacherList;
 
+    @ProblemFactCollectionProperty
+    private List<ResourceUnavailability> resourceUnavailabilityList;
+
     @PlanningEntityCollectionProperty
     private List<Lesson> lessonList;
 
@@ -49,12 +53,13 @@ public class DanceSchedule {
     private HardSoftScore score;
 
     public DanceSchedule(Long id, List<Timeslot> timeslotList, List<Room> roomList,
-                         List<Teacher> teacherList, List<Lesson> lessonList) {
+                         List<Teacher> teacherList, List<ResourceUnavailability> resourceUnavailabilityList,
+                         List<Lesson> lessonList) {
         this.id = id;
         this.timeslotList = timeslotList;
         this.roomList = roomList;
         this.teacherList = teacherList;
+        this.resourceUnavailabilityList = resourceUnavailabilityList;
         this.lessonList = lessonList;
     }
 }
-

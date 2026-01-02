@@ -194,7 +194,7 @@ CREATE TABLE resource_unavailability (...);
 
 ---
 
-### [BE-11] Реализация Constraints (ConstraintProvider) ⏳ СЛЕДУЮЩАЯ ЗАДАЧА
+### [BE-11] Реализация Constraints (ConstraintProvider) ✅ ЗАВЕРШЕНО
 
 #### Что нужно создать:
 **Класс `DanceScheduleConstraintProvider`** в пакете `solver`
@@ -334,7 +334,7 @@ Constraint minimizeGaps(ConstraintFactory constraintFactory) {
 
 ---
 
-### [BE-12] Solver Service & Manager (Async Logic) ⏳ СЛЕДУЮЩАЯ
+### [BE-12] Solver Service & Manager (Async Logic) ✅ ЗАВЕРШЕНО
 
 #### Что нужно создать:
 **Класс `SolverService`** в пакете `service`
@@ -436,7 +436,7 @@ public void terminateEarly(Long scheduleId) {
 
 ---
 
-### [BE-13] Unit Tests for Constraints ⏳ СЛЕДУЮЩАЯ
+### [BE-13] Unit Tests for Constraints ✅ ЗАВЕРШЕНО
 
 #### Создать Тестовый Класс:
 **`DanceScheduleConstraintProviderTest`** в `src/test/java/.../solver/`
@@ -488,7 +488,7 @@ class DanceScheduleConstraintProviderTest {
 
 ---
 
-### [BE-14] Solver Controller & DTO ⏳ СЛЕДУЮЩАЯ
+### [BE-14] Solver Controller & DTO ✅ ЗАВЕРШЕНО
 
 #### Создать Controller:
 **`SolverController`** в пакете `controller`

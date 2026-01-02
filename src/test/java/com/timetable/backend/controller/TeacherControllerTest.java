@@ -76,5 +76,56 @@ class TeacherControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isForbidden());
     }
-}
 
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createTeacher_ValidationFailure_InvalidEmail() throws Exception {
+        CreateTeacherRequest request = new CreateTeacherRequest(
+                "invalid-email", "password", "John Doe", 5, "#FFFFFF", Set.of(1L)
+        );
+
+        mockMvc.perform(post("/api/teachers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createTeacher_ValidationFailure_ShortPassword() throws Exception {
+        CreateTeacherRequest request = new CreateTeacherRequest(
+                "teacher@test.com", "123", "John Doe", 5, "#FFFFFF", Set.of(1L)
+        );
+
+        mockMvc.perform(post("/api/teachers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createTeacher_ValidationFailure_EmptyName() throws Exception {
+        CreateTeacherRequest request = new CreateTeacherRequest(
+                "teacher@test.com", "password", "", 5, "#FFFFFF", Set.of(1L)
+        );
+
+        mockMvc.perform(post("/api/teachers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createTeacher_ValidationFailure_InvalidColor() throws Exception {
+        CreateTeacherRequest request = new CreateTeacherRequest(
+                "teacher@test.com", "password", "John Doe", 5, "ZZZZZZ", Set.of(1L)
+        );
+
+        mockMvc.perform(post("/api/teachers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+}
