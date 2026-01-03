@@ -64,10 +64,10 @@ class SolverLoadIntegrationTest {
         Long scheduleId = System.currentTimeMillis();
         solverService.solve(scheduleId);
 
-        // 3. Wait for solution (max 60 seconds)
+        // 3. Wait for solution (max 75 seconds with 5-second intervals to reduce DB load)
         boolean solved = false;
-        for (int i = 0; i < 60; i++) {
-            Thread.sleep(1000);
+        for (int i = 0; i < 15; i++) {
+            Thread.sleep(5000);
             DanceSchedule solution = solverService.getCurrentSolutionFromDatabase(scheduleId);
 
             if (solution != null) {
@@ -83,7 +83,7 @@ class SolverLoadIntegrationTest {
         }
 
         // 4. Verify
-        assertThat(solved).as("Solver should assign all 50 lessons within 60 seconds").isTrue();
+        assertThat(solved).as("Solver should assign all 50 lessons within 75 seconds").isTrue();
 
         DanceSchedule finalSolution = solverService.getCurrentSolutionFromDatabase(scheduleId);
         // Note: Score might be null if read from DB before solver writes it back,

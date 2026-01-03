@@ -34,9 +34,8 @@ public class SolverService {
      * Loads the problem from database and starts solving asynchronously.
      *
      * @param scheduleId unique identifier for this solving session (can be any Long, e.g., timestamp)
-     * @return the problem ID used to track solver status
      */
-    public Long solve(Long scheduleId) {
+    public void solve(Long scheduleId) {
         log.info("Starting solver for schedule ID: {}", scheduleId);
 
         // Start solving asynchronously using the new solveBuilder() pattern (Timefold 1.6.0+)
@@ -49,7 +48,6 @@ public class SolverService {
 
         log.info("Solver started for schedule {}", scheduleId);
 
-        return scheduleId;
     }
 
     /**
@@ -69,6 +67,28 @@ public class SolverService {
      */
     @Transactional(readOnly = true)
     public DanceSchedule loadProblem(Long scheduleId) {
+        DanceSchedule schedule = loadScheduleFromDatabase(scheduleId);
+
+        // Clear planning variables for non-pinned lessons
+        // (Solver will assign timeslot and room)
+        schedule.getLessonList().forEach(lesson -> {
+            if (!lesson.isPinned()) {
+                lesson.setTimeslot(null);
+                lesson.setRoom(null);
+            }
+        });
+
+        return schedule;
+    }
+
+    /**
+     * Private helper method to load schedule data from database.
+     * Extracts common data loading logic to avoid code duplication.
+     *
+     * @param scheduleId the schedule identifier
+     * @return DanceSchedule with all data loaded from database
+     */
+    private DanceSchedule loadScheduleFromDatabase(Long scheduleId) {
         log.info("Loading problem data from database for schedule ID: {}", scheduleId);
 
         // Load all problem facts (immutable data)
@@ -80,14 +100,6 @@ public class SolverService {
         // Load all planning entities (lessons to be scheduled)
         List<Lesson> lessons = lessonRepository.findAll();
 
-        // Clear planning variables for non-pinned lessons
-        // (Solver will assign timeslot and room)
-        lessons.forEach(lesson -> {
-            if (!lesson.isPinned()) {
-                lesson.setTimeslot(null);
-                lesson.setRoom(null);
-            }
-        });
 
         log.info("Loaded {} timeslots, {} rooms, {} teachers, {} lessons",
             timeslots.size(), rooms.size(), teachers.size(), lessons.size());
@@ -200,13 +212,15 @@ public class SolverService {
     /**
      * Gets the current solution from database (solved or unsolved lessons).
      * This can be called at any time, even while solving is in progress.
+     * Note: This method does NOT clear planning variables, so you can see assigned timeslots and rooms.
      *
      * @param scheduleId the schedule identifier (not used, just for consistency)
      * @return current state of the schedule from database
      */
     @Transactional(readOnly = true)
     public DanceSchedule getCurrentSolutionFromDatabase(Long scheduleId) {
-        return loadProblem(scheduleId);
+        // Load schedule data without clearing planning variables
+        return loadScheduleFromDatabase(scheduleId);
     }
 
     /**
