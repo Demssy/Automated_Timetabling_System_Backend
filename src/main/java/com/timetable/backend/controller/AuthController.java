@@ -5,6 +5,7 @@ import com.timetable.backend.domain.dto.AuthenticationResponse;
 import com.timetable.backend.domain.dto.RegisterRequest;
 import com.timetable.backend.security.JwtService;
 import com.timetable.backend.service.AuthService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -25,7 +26,7 @@ public class AuthController {
     private boolean cookieSecure;
 
     @PostMapping("/register")
-    public ResponseEntity<AuthenticationResponse> register(@RequestBody RegisterRequest request) {
+    public ResponseEntity<AuthenticationResponse> register(@Valid @RequestBody RegisterRequest request) {
         String token = authService.registerStudent(request.email(), request.password(), request.fullName(), request.birthDate());
         // set cookie
         long maxAgeSec = jwtService.getExpirationMs() / 1000L;

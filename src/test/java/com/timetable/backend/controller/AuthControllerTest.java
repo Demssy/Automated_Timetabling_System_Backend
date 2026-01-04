@@ -70,5 +70,53 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").value("jwt-token"));
     }
+
+    @Test
+    void register_WithInvalidEmail_ShouldReturnBadRequest() throws Exception {
+        RegisterRequest request = new RegisterRequest(
+                "invalid-email", "password123", "Student Name", LocalDate.of(2000, 1, 1)
+        );
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void register_WithShortPassword_ShouldReturnBadRequest() throws Exception {
+        RegisterRequest request = new RegisterRequest(
+                "student@test.com", "12345", "Student Name", LocalDate.of(2000, 1, 1)
+        );
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void register_WithBlankFullName_ShouldReturnBadRequest() throws Exception {
+        RegisterRequest request = new RegisterRequest(
+                "student@test.com", "password123", "", LocalDate.of(2000, 1, 1)
+        );
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void register_WithFutureBirthDate_ShouldReturnBadRequest() throws Exception {
+        RegisterRequest request = new RegisterRequest(
+                "student@test.com", "password123", "Student Name", LocalDate.now().plusDays(1)
+        );
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
 }
 

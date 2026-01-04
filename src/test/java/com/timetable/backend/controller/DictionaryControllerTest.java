@@ -91,5 +91,27 @@ class DictionaryControllerTest {
                         .content(objectMapper.writeValueAsString(roomDTO)))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createRoom_WithBlankName_ShouldReturnBadRequest() throws Exception {
+        RoomDTO roomDTO = new RoomDTO(null, "", 10, true);
+
+        mockMvc.perform(post("/api/dictionaries/rooms")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(roomDTO)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createRoom_WithInvalidCapacity_ShouldReturnBadRequest() throws Exception {
+        RoomDTO roomDTO = new RoomDTO(null, "Room 1", 1, true);
+
+        mockMvc.perform(post("/api/dictionaries/rooms")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(roomDTO)))
+                .andExpect(status().isBadRequest());
+    }
 }
 

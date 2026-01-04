@@ -2,7 +2,7 @@ package com.timetable.backend.controller;
 
 import ai.timefold.solver.core.api.solver.SolverStatus;
 import com.timetable.backend.domain.dto.*;
-import com.timetable.backend.domain.model.Lesson;
+import com.timetable.backend.domain.mapper.LessonMapper;
 import com.timetable.backend.service.SolverService;
 import com.timetable.backend.solver.DanceSchedule;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 public class SolverController {
 
     private final SolverService solverService;
+    private final LessonMapper lessonMapper;
 
     /**
      * Starts the solver to optimize the schedule.
@@ -144,9 +145,9 @@ public class SolverController {
                     .build();
             }
 
-            // Map lessons to DTOs
+            // Map lessons to DTOs using LessonMapper
             List<ScheduledLessonDTO> lessonDTOs = solution.getLessonList().stream()
-                .map(this::mapToScheduledLessonDTO)
+                .map(lessonMapper::toScheduledLessonDTO)
                 .collect(Collectors.toList());
 
             boolean fullyAssigned = solverService.isFullyAssigned(solution);
@@ -166,24 +167,6 @@ public class SolverController {
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .build();
         }
-    }
-
-    /**
-     * Helper method to map Lesson entity to ScheduledLessonDTO.
-     */
-    private ScheduledLessonDTO mapToScheduledLessonDTO(Lesson lesson) {
-        return new ScheduledLessonDTO(
-            lesson.getId(),
-            lesson.getTeacher() != null ? lesson.getTeacher().getFullName() : "N/A",
-            lesson.getDanceGroup() != null ? lesson.getDanceGroup().getName() : "N/A",
-            lesson.getTimeslot() != null ? lesson.getTimeslot().getDayOfWeek() : null,
-            lesson.getTimeslot() != null ? lesson.getTimeslot().getStartTime() : null,
-            lesson.getTimeslot() != null ? lesson.getTimeslot().getEndTime() : null,
-            lesson.getRoom() != null ? lesson.getRoom().getName() : "Unassigned",
-            lesson.getDurationMinutes(),
-            lesson.isPrivate(),
-            lesson.isPinned()
-        );
     }
 }
 

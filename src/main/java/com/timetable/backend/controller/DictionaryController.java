@@ -9,6 +9,7 @@ import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Room;
 import com.timetable.backend.domain.repository.DanceStyleRepository;
 import com.timetable.backend.domain.repository.RoomRepository;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,7 +30,7 @@ public class DictionaryController {
     // Rooms (ROLE_ADMIN)
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/rooms")
-    public ResponseEntity<RoomDTO> createRoom(@RequestBody RoomDTO roomDTO) {
+    public ResponseEntity<RoomDTO> createRoom(@Valid @RequestBody RoomDTO roomDTO) {
         Room room = dictionaryMapper.toRoom(roomDTO);
         Room saved = roomRepository.save(room);
         return ResponseEntity.ok(dictionaryMapper.toRoomDTO(saved));
@@ -55,7 +56,7 @@ public class DictionaryController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/rooms/{id}")
-    public ResponseEntity<RoomDTO> updateRoom(@PathVariable Long id, @RequestBody RoomDTO updated) {
+    public ResponseEntity<RoomDTO> updateRoom(@PathVariable Long id, @Valid @RequestBody RoomDTO updated) {
         return roomRepository.findById(id).map(r -> {
             r.setName(updated.name());
             r.setCapacity(updated.capacity());
@@ -78,7 +79,7 @@ public class DictionaryController {
     // Dance styles (ROLE_ADMIN)
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/styles")
-    public ResponseEntity<DanceStyleDTO> createStyle(@RequestBody DanceStyleDTO styleDTO) {
+    public ResponseEntity<DanceStyleDTO> createStyle(@Valid @RequestBody DanceStyleDTO styleDTO) {
         DanceStyle style = dictionaryMapper.toDanceStyle(styleDTO);
         DanceStyle saved = danceStyleRepository.save(style);
         return ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(saved));
@@ -104,7 +105,7 @@ public class DictionaryController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/styles/{id}")
-    public ResponseEntity<DanceStyleDTO> updateStyle(@PathVariable Long id, @RequestBody DanceStyleDTO updated) {
+    public ResponseEntity<DanceStyleDTO> updateStyle(@PathVariable Long id, @Valid @RequestBody DanceStyleDTO updated) {
         return danceStyleRepository.findById(id).map(s -> {
             s.setName(updated.name());
             danceStyleRepository.save(s);
