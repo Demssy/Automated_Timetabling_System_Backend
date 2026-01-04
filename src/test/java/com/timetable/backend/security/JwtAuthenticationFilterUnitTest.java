@@ -5,14 +5,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -20,14 +18,12 @@ import static org.mockito.Mockito.*;
 public class JwtAuthenticationFilterUnitTest {
 
     JwtService jwtService;
-    UserDetailsService userDetailsService;
     JwtAuthenticationFilter filter;
 
     @BeforeEach
     void setup() {
         jwtService = mock(JwtService.class);
-        userDetailsService = mock(UserDetailsService.class);
-        filter = new JwtAuthenticationFilter(jwtService, userDetailsService);
+        filter = new JwtAuthenticationFilter(jwtService);
     }
 
     @Test
@@ -37,17 +33,23 @@ public class JwtAuthenticationFilterUnitTest {
         FilterChain chain = mock(FilterChain.class);
 
         when(req.getHeader("Authorization")).thenReturn("Bearer faketoken");
+
+        // Mock stateless JWT service methods
+        when(jwtService.isTokenValid("faketoken")).thenReturn(true);
         when(jwtService.extractUsername("faketoken")).thenReturn("user@example.com");
 
-        UserDetails ud = User.withUsername("user@example.com").password("pw").authorities("ROLE_USER").build();
-        when(userDetailsService.loadUserByUsername("user@example.com")).thenReturn(ud);
-        when(jwtService.isTokenValid("faketoken", ud)).thenReturn(true);
+        Collection<? extends GrantedAuthority> authorities =
+                Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"));
+        doReturn(authorities).when(jwtService).extractAuthorities("faketoken");
 
         filter.doFilterInternal(req, res, chain);
 
         var auth = SecurityContextHolder.getContext().getAuthentication();
         assertThat(auth).isNotNull();
         assertThat(auth.getName()).isEqualTo("user@example.com");
+        assertThat(auth.getAuthorities())
+                .extracting("authority")
+                .containsExactly("ROLE_USER");
 
         // cleanup
         SecurityContextHolder.clearContext();
@@ -76,17 +78,22 @@ public class JwtAuthenticationFilterUnitTest {
         jakarta.servlet.http.Cookie cookie = new jakarta.servlet.http.Cookie("jwt", "cookietoken");
         when(req.getCookies()).thenReturn(new jakarta.servlet.http.Cookie[]{cookie});
 
+        // Mock stateless JWT service methods
+        when(jwtService.isTokenValid("cookietoken")).thenReturn(true);
         when(jwtService.extractUsername("cookietoken")).thenReturn("cookieuser@example.com");
 
-        UserDetails ud = User.withUsername("cookieuser@example.com").password("pw").authorities("ROLE_USER").build();
-        when(userDetailsService.loadUserByUsername("cookieuser@example.com")).thenReturn(ud);
-        when(jwtService.isTokenValid("cookietoken", ud)).thenReturn(true);
+        Collection<? extends GrantedAuthority> authorities =
+                Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"));
+        doReturn(authorities).when(jwtService).extractAuthorities("cookietoken");
 
         filter.doFilterInternal(req, res, chain);
 
         var auth = SecurityContextHolder.getContext().getAuthentication();
         assertThat(auth).isNotNull();
         assertThat(auth.getName()).isEqualTo("cookieuser@example.com");
+        assertThat(auth.getAuthorities())
+                .extracting("authority")
+                .containsExactly("ROLE_USER");
 
         SecurityContextHolder.clearContext();
     }

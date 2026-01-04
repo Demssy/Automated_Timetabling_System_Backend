@@ -106,7 +106,7 @@ class DictionaryControllerTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void createRoom_WithInvalidCapacity_ShouldReturnBadRequest() throws Exception {
-        RoomDTO roomDTO = new RoomDTO(null, "Room 1", 1, true);
+        RoomDTO roomDTO = new RoomDTO(null, "Room 1", 0, true); // 0 is invalid (min is 1)
 
         mockMvc.perform(post("/api/dictionaries/rooms")
                         .contentType(MediaType.APPLICATION_JSON)
