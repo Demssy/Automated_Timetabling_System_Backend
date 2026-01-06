@@ -1,328 +1,330 @@
 package com.timetable.backend.solver;
 
 import ai.timefold.solver.test.api.score.stream.ConstraintVerifier;
-import com.timetable.backend.domain.model.*;
+import com.timetable.backend.domain.model.DanceLevel;
+import com.timetable.backend.solver.domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.DayOfWeek;
-import java.time.LocalDate;
 import java.time.LocalTime;
 
 /**
  * Unit tests for DanceScheduleConstraintProvider.
  * Uses Timefold's ConstraintVerifier to test each constraint in isolation.
+ *
+ * REFACTORED: Now uses Planning POJOs instead of JPA entities.
  */
 class DanceScheduleConstraintProviderTest {
 
-    private ConstraintVerifier<DanceScheduleConstraintProvider, DanceSchedule> constraintVerifier;
+    private ConstraintVerifier<DanceScheduleConstraintProvider, TimetableSolution> constraintVerifier;
 
     @BeforeEach
     void setUp() {
         constraintVerifier = ConstraintVerifier.build(
             new DanceScheduleConstraintProvider(),
-            DanceSchedule.class,
-            Lesson.class
+            TimetableSolution.class,
+            PlanningLesson.class
         );
     }
 
-    // ==================== HARD CONSTRAINT 1: Room Conflict ====================
+    // ==================== HARD CONSTRAINT 1: PlanningRoom Conflict ====================
 
     @Test
-    @DisplayName("Room conflict (weighted): Two group lessons exceed capacity")
+    @DisplayName("PlanningRoom conflict (weighted): Two group lessons exceed capacity")
     void penaltyForRoomConflict_twoGroupLessons() {
         // Given: Two group lessons (100 + 100 = 200, exceeds 100)
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Teacher teacher1 = createTeacher(1L, "John Doe");
-        Teacher teacher2 = createTeacher(2L, "Jane Smith");
-        DanceGroup group1 = createDanceGroup(1L, "Beginners Salsa");
-        DanceGroup group2 = createDanceGroup(2L, "Intermediate Bachata");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTeacher teacher1 = createTeacher(1L, "John Doe");
+        PlanningTeacher teacher2 = createTeacher(2L, "Jane Smith");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Beginners Salsa");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Intermediate Bachata");
 
-        Lesson lesson1 = createLesson(1L, teacher1, group1, timeslot, room, false, false);
-        Lesson lesson2 = createLesson(2L, teacher2, group2, timeslot, room, false, false);
+        PlanningLesson lesson1 = createLesson(1L, teacher1, group1, PlanningTimeslot, PlanningRoom, false, false);
+        PlanningLesson lesson2 = createLesson(2L, teacher2, group2, PlanningTimeslot, PlanningRoom, false, false);
 
         // When/Then: Should penalize with 100 HARD (200 - 100 = 100 excess)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::roomConflict)
-            .given(lesson1, lesson2, room, timeslot)
+            .given(lesson1, lesson2, PlanningRoom, PlanningTimeslot)
             .penalizesBy(100);
     }
 
     @Test
-    @DisplayName("Room conflict (weighted): Four private lessons within capacity")
+    @DisplayName("PlanningRoom conflict (weighted): Four private lessons within capacity")
     void noPenaltyForRoomConflict_fourPrivateLessons() {
         // Given: Four private lessons (25 * 4 = 100, exactly at capacity)
-        Room room = createRoom(1L, "Studio B", 15, true);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Teacher teacher1 = createTeacher(1L, "Teacher 1");
-        Teacher teacher2 = createTeacher(2L, "Teacher 2");
-        Teacher teacher3 = createTeacher(3L, "Teacher 3");
-        Teacher teacher4 = createTeacher(4L, "Teacher 4");
-        DanceGroup group1 = createDanceGroup(1L, "Private 1");
-        DanceGroup group2 = createDanceGroup(2L, "Private 2");
-        DanceGroup group3 = createDanceGroup(3L, "Private 3");
-        DanceGroup group4 = createDanceGroup(4L, "Private 4");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio B", 15, true);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTeacher teacher1 = createTeacher(1L, "PlanningTeacher 1");
+        PlanningTeacher teacher2 = createTeacher(2L, "PlanningTeacher 2");
+        PlanningTeacher teacher3 = createTeacher(3L, "PlanningTeacher 3");
+        PlanningTeacher teacher4 = createTeacher(4L, "PlanningTeacher 4");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Private 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Private 2");
+        PlanningDanceGroup group3 = createDanceGroup(3L, "Private 3");
+        PlanningDanceGroup group4 = createDanceGroup(4L, "Private 4");
 
-        Lesson lesson1 = createLesson(1L, teacher1, group1, timeslot, room, true, false);
-        Lesson lesson2 = createLesson(2L, teacher2, group2, timeslot, room, true, false);
-        Lesson lesson3 = createLesson(3L, teacher3, group3, timeslot, room, true, false);
-        Lesson lesson4 = createLesson(4L, teacher4, group4, timeslot, room, true, false);
+        PlanningLesson lesson1 = createLesson(1L, teacher1, group1, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson2 = createLesson(2L, teacher2, group2, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson3 = createLesson(3L, teacher3, group3, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson4 = createLesson(4L, teacher4, group4, PlanningTimeslot, PlanningRoom, true, false);
 
         // When/Then: No penalty (exactly at 100% capacity)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::roomConflict)
-            .given(lesson1, lesson2, lesson3, lesson4, room, timeslot)
+            .given(lesson1, lesson2, lesson3, lesson4, PlanningRoom, PlanningTimeslot)
             .penalizesBy(0);
     }
 
     @Test
-    @DisplayName("Room conflict (weighted): Five private lessons exceed capacity")
+    @DisplayName("PlanningRoom conflict (weighted): Five private lessons exceed capacity")
     void penaltyForRoomConflict_fivePrivateLessons() {
         // Given: Five private lessons (25 * 5 = 125, exceeds 100)
-        Room room = createRoom(1L, "Studio B", 15, true);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Teacher teacher1 = createTeacher(1L, "Teacher 1");
-        Teacher teacher2 = createTeacher(2L, "Teacher 2");
-        Teacher teacher3 = createTeacher(3L, "Teacher 3");
-        Teacher teacher4 = createTeacher(4L, "Teacher 4");
-        Teacher teacher5 = createTeacher(5L, "Teacher 5");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio B", 15, true);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTeacher teacher1 = createTeacher(1L, "PlanningTeacher 1");
+        PlanningTeacher teacher2 = createTeacher(2L, "PlanningTeacher 2");
+        PlanningTeacher teacher3 = createTeacher(3L, "PlanningTeacher 3");
+        PlanningTeacher teacher4 = createTeacher(4L, "PlanningTeacher 4");
+        PlanningTeacher teacher5 = createTeacher(5L, "PlanningTeacher 5");
 
-        Lesson lesson1 = createLesson(1L, teacher1, null, timeslot, room, true, false);
-        Lesson lesson2 = createLesson(2L, teacher2, null, timeslot, room, true, false);
-        Lesson lesson3 = createLesson(3L, teacher3, null, timeslot, room, true, false);
-        Lesson lesson4 = createLesson(4L, teacher4, null, timeslot, room, true, false);
-        Lesson lesson5 = createLesson(5L, teacher5, null, timeslot, room, true, false);
+        PlanningLesson lesson1 = createLesson(1L, teacher1, null, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson2 = createLesson(2L, teacher2, null, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson3 = createLesson(3L, teacher3, null, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson4 = createLesson(4L, teacher4, null, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson5 = createLesson(5L, teacher5, null, PlanningTimeslot, PlanningRoom, true, false);
 
         // When/Then: Should penalize with 25 HARD (125 - 100 = 25 excess)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::roomConflict)
-            .given(lesson1, lesson2, lesson3, lesson4, lesson5, room, timeslot)
+            .given(lesson1, lesson2, lesson3, lesson4, lesson5, PlanningRoom, PlanningTimeslot)
             .penalizesBy(25);
     }
 
     @Test
-    @DisplayName("Room conflict (weighted): Group + Private exceeds capacity")
+    @DisplayName("PlanningRoom conflict (weighted): Group + Private exceeds capacity")
     void penaltyForRoomConflict_groupPlusPrivate() {
         // Given: One group (100) + one private (25) = 125, exceeds 100
-        Room room = createRoom(1L, "Studio C", 15, true);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Teacher teacher1 = createTeacher(1L, "John Doe");
-        Teacher teacher2 = createTeacher(2L, "Jane Smith");
-        DanceGroup group1 = createDanceGroup(1L, "Private");
-        DanceGroup group2 = createDanceGroup(2L, "Group");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio C", 15, true);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTeacher teacher1 = createTeacher(1L, "John Doe");
+        PlanningTeacher teacher2 = createTeacher(2L, "Jane Smith");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Private");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group");
 
-        Lesson lesson1 = createLesson(1L, teacher1, group1, timeslot, room, true, false);  // private = 25
-        Lesson lesson2 = createLesson(2L, teacher2, group2, timeslot, room, false, false); // group = 100
+        PlanningLesson lesson1 = createLesson(1L, teacher1, group1, PlanningTimeslot, PlanningRoom, true, false);  // private = 25
+        PlanningLesson lesson2 = createLesson(2L, teacher2, group2, PlanningTimeslot, PlanningRoom, false, false); // group = 100
 
         // When/Then: Should penalize with 25 HARD (125 - 100 = 25 excess)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::roomConflict)
-            .given(lesson1, lesson2, room, timeslot)
+            .given(lesson1, lesson2, PlanningRoom, PlanningTimeslot)
             .penalizesBy(25);
     }
 
     @Test
-    @DisplayName("Room conflict (weighted): Three private lessons within capacity")
+    @DisplayName("PlanningRoom conflict (weighted): Three private lessons within capacity")
     void noPenaltyForRoomConflict_threePrivateLessons() {
         // Given: Three private lessons (25 * 3 = 75, under 100)
-        Room room = createRoom(1L, "Studio B", 15, true);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Teacher teacher1 = createTeacher(1L, "Teacher 1");
-        Teacher teacher2 = createTeacher(2L, "Teacher 2");
-        Teacher teacher3 = createTeacher(3L, "Teacher 3");
-        DanceGroup group1 = createDanceGroup(1L, "Private 1");
-        DanceGroup group2 = createDanceGroup(2L, "Private 2");
-        DanceGroup group3 = createDanceGroup(3L, "Private 3");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio B", 15, true);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTeacher teacher1 = createTeacher(1L, "PlanningTeacher 1");
+        PlanningTeacher teacher2 = createTeacher(2L, "PlanningTeacher 2");
+        PlanningTeacher teacher3 = createTeacher(3L, "PlanningTeacher 3");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Private 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Private 2");
+        PlanningDanceGroup group3 = createDanceGroup(3L, "Private 3");
 
-        Lesson lesson1 = createLesson(1L, teacher1, group1, timeslot, room, true, false);
-        Lesson lesson2 = createLesson(2L, teacher2, group2, timeslot, room, true, false);
-        Lesson lesson3 = createLesson(3L, teacher3, group3, timeslot, room, true, false);
+        PlanningLesson lesson1 = createLesson(1L, teacher1, group1, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson2 = createLesson(2L, teacher2, group2, PlanningTimeslot, PlanningRoom, true, false);
+        PlanningLesson lesson3 = createLesson(3L, teacher3, group3, PlanningTimeslot, PlanningRoom, true, false);
 
         // When/Then: No penalty (75 < 100)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::roomConflict)
-            .given(lesson1, lesson2, lesson3, room, timeslot)
+            .given(lesson1, lesson2, lesson3, PlanningRoom, PlanningTimeslot)
             .penalizesBy(0);
     }
 
-    // ==================== HARD CONSTRAINT 2: Teacher Conflict ====================
+    // ==================== HARD CONSTRAINT 2: PlanningTeacher Conflict ====================
 
     @Test
-    @DisplayName("Teacher conflict: Teacher cannot teach two lessons simultaneously")
+    @DisplayName("PlanningTeacher conflict: PlanningTeacher cannot teach two lessons simultaneously")
     void penaltyForTeacherConflict() {
-        // Given: Same teacher, same timeslot, different rooms
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room1 = createRoom(1L, "Studio A", 20, false);
-        Room room2 = createRoom(2L, "Studio B", 15, false);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
+        // Given: Same PlanningTeacher, same PlanningTimeslot, different rooms
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom room1 = createRoom(1L, "Studio A", 20, false);
+        PlanningRoom room2 = createRoom(2L, "Studio B", 15, false);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
 
-        Lesson lesson1 = createLesson(1L, teacher, group1, timeslot, room1, false, false);
-        Lesson lesson2 = createLesson(2L, teacher, group2, timeslot, room2, false, false);
+        PlanningLesson lesson1 = createLesson(1L, PlanningTeacher, group1, PlanningTimeslot, room1, false, false);
+        PlanningLesson lesson2 = createLesson(2L, PlanningTeacher, group2, PlanningTimeslot, room2, false, false);
 
         // When/Then: Should penalize with 1 HARD
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherConflict)
-            .given(lesson1, lesson2, teacher, timeslot, room1, room2)
+            .given(lesson1, lesson2, PlanningTeacher, PlanningTimeslot, room1, room2)
             .penalizesBy(1);
     }
 
     @Test
-    @DisplayName("Teacher conflict: No penalty for different timeslots")
+    @DisplayName("PlanningTeacher conflict: No penalty for different timeslots")
     void noPenaltyForTeacherConflict_differentTimeslots() {
-        // Given: Same teacher, different timeslots
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room1 = createRoom(1L, "Studio A", 20, false);
-        Room room2 = createRoom(2L, "Studio B", 15, false);
-        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
+        // Given: Same PlanningTeacher, different timeslots
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom room1 = createRoom(1L, "Studio A", 20, false);
+        PlanningRoom room2 = createRoom(2L, "Studio B", 15, false);
+        PlanningTimeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTimeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
 
-        Lesson lesson1 = createLesson(1L, teacher, group1, timeslot1, room1, false, false);
-        Lesson lesson2 = createLesson(2L, teacher, group2, timeslot2, room2, false, false);
+        PlanningLesson lesson1 = createLesson(1L, PlanningTeacher, group1, timeslot1, room1, false, false);
+        PlanningLesson lesson2 = createLesson(2L, PlanningTeacher, group2, timeslot2, room2, false, false);
 
         // When/Then: No conflict (different times)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherConflict)
-            .given(lesson1, lesson2, teacher, timeslot1, timeslot2, room1, room2)
+            .given(lesson1, lesson2, PlanningTeacher, timeslot1, timeslot2, room1, room2)
             .penalizesBy(0);
     }
 
     @Test
-    @DisplayName("Teacher conflict: No penalty for different teachers")
+    @DisplayName("PlanningTeacher conflict: No penalty for different teachers")
     void noPenaltyForTeacherConflict_differentTeachers() {
-        // Given: Different teachers, same timeslot
-        Teacher teacher1 = createTeacher(1L, "John Doe");
-        Teacher teacher2 = createTeacher(2L, "Jane Smith");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
+        // Given: Different teachers, same PlanningTimeslot
+        PlanningTeacher teacher1 = createTeacher(1L, "John Doe");
+        PlanningTeacher teacher2 = createTeacher(2L, "Jane Smith");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
 
-        Lesson lesson1 = createLesson(1L, teacher1, group1, timeslot, room, false, false);
-        Lesson lesson2 = createLesson(2L, teacher2, group2, timeslot, room, false, false);
+        PlanningLesson lesson1 = createLesson(1L, teacher1, group1, PlanningTimeslot, PlanningRoom, false, false);
+        PlanningLesson lesson2 = createLesson(2L, teacher2, group2, PlanningTimeslot, PlanningRoom, false, false);
 
-        // When/Then: No teacher conflict (different teachers)
+        // When/Then: No PlanningTeacher conflict (different teachers)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherConflict)
-            .given(lesson1, lesson2, teacher1, teacher2, timeslot, room)
+            .given(lesson1, lesson2, teacher1, teacher2, PlanningTimeslot, PlanningRoom)
             .penalizesBy(0);
     }
 
-    // ==================== HARD CONSTRAINT 3: Teacher Availability ====================
+    // ==================== HARD CONSTRAINT 3: PlanningTeacher Availability ====================
 
     @Test
-    @DisplayName("Teacher availability: Penalty when lesson scheduled during unavailable time")
+    @DisplayName("PlanningTeacher availability: Penalty when PlanningLesson scheduled during unavailable time")
     void penaltyForTeacherUnavailability() {
-        // Given: Teacher unavailable on Monday 9:00-10:00
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        DanceGroup group = createDanceGroup(1L, "Group 1");
+        // Given: PlanningTeacher unavailable on Monday 9:00-10:00
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningDanceGroup group = createDanceGroup(1L, "Group 1");
 
-        Lesson lesson = createLesson(1L, teacher, group, timeslot, room, false, false);
-        ResourceUnavailability unavailability = createUnavailability(1L, teacher, timeslot, "Vacation");
+        PlanningLesson PlanningLesson = createLesson(1L, PlanningTeacher, group, PlanningTimeslot, PlanningRoom, false, false);
+        PlanningResourceUnavailability unavailability = createUnavailability(1L, PlanningTeacher.getId(), PlanningTimeslot.getId(), "Vacation");
 
         // When/Then: Should penalize with 1 HARD
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherAvailability)
-            .given(lesson, unavailability, teacher, timeslot, room)
+            .given(PlanningLesson, unavailability)
             .penalizesBy(1);
     }
 
     @Test
-    @DisplayName("Teacher availability: No penalty when teacher is available")
+    @DisplayName("PlanningTeacher availability: No penalty when PlanningTeacher is available")
     void noPenaltyForTeacherAvailability_teacherAvailable() {
-        // Given: Teacher available (no unavailability record)
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        DanceGroup group = createDanceGroup(1L, "Group 1");
+        // Given: PlanningTeacher available (no unavailability record)
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningDanceGroup group = createDanceGroup(1L, "Group 1");
 
-        Lesson lesson = createLesson(1L, teacher, group, timeslot, room, false, false);
+        PlanningLesson PlanningLesson = createLesson(1L, PlanningTeacher, group, PlanningTimeslot, PlanningRoom, false, false);
 
-        // When/Then: No penalty (teacher is available)
+        // When/Then: No penalty (PlanningTeacher is available)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherAvailability)
-            .given(lesson, teacher, timeslot, room)
+            .given(PlanningLesson)
             .penalizesBy(0);
     }
 
     @Test
-    @DisplayName("Teacher availability: No penalty for different timeslot")
+    @DisplayName("PlanningTeacher availability: No penalty for different PlanningTimeslot")
     void noPenaltyForTeacherAvailability_differentTimeslot() {
-        // Given: Teacher unavailable at 9:00, but lesson is at 10:00
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Timeslot unavailableSlot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Timeslot lessonSlot = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        DanceGroup group = createDanceGroup(1L, "Group 1");
+        // Given: PlanningTeacher unavailable at 9:00, but PlanningLesson is at 10:00
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningTimeslot unavailableSlot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTimeslot lessonSlot = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningDanceGroup group = createDanceGroup(1L, "Group 1");
 
-        Lesson lesson = createLesson(1L, teacher, group, lessonSlot, room, false, false);
-        ResourceUnavailability unavailability = createUnavailability(1L, teacher, unavailableSlot, "Meeting");
+        PlanningLesson PlanningLesson = createLesson(1L, PlanningTeacher, group, lessonSlot, PlanningRoom, false, false);
+        PlanningResourceUnavailability unavailability = createUnavailability(1L, PlanningTeacher.getId(), unavailableSlot.getId(), "Meeting");
 
-        // When/Then: No penalty (different timeslot)
+        // When/Then: No penalty (different PlanningTimeslot)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherAvailability)
-            .given(lesson, unavailability, teacher, unavailableSlot, lessonSlot, room)
+            .given(PlanningLesson, unavailability)
             .penalizesBy(0);
     }
 
-    // ==================== SOFT CONSTRAINT: Minimize Teacher Gaps ====================
+    // ==================== SOFT CONSTRAINT: Minimize PlanningTeacher Gaps ====================
 
     @Test
     @DisplayName("Minimize gaps: Penalty proportional to gap duration")
     void penaltyForTeacherGaps_proportionalToGapDuration() {
-        // Given: Teacher has lessons at 9:00-10:00 and 12:00-13:00 (2 hours = 120 min gap)
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room1 = createRoom(1L, "Studio A", 20, false);
-        Room room2 = createRoom(2L, "Studio B", 15, false);
-        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "12:00", "13:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
+        // Given: PlanningTeacher has lessons at 9:00-10:00 and 12:00-13:00 (2 hours = 120 min gap)
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom room1 = createRoom(1L, "Studio A", 20, false);
+        PlanningRoom room2 = createRoom(2L, "Studio B", 15, false);
+        PlanningTimeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTimeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "12:00", "13:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
 
-        Lesson lesson1 = createLesson(1L, teacher, group1, timeslot1, room1, false, false);
-        Lesson lesson2 = createLesson(2L, teacher, group2, timeslot2, room2, false, false);
+        PlanningLesson lesson1 = createLesson(1L, PlanningTeacher, group1, timeslot1, room1, false, false);
+        PlanningLesson lesson2 = createLesson(2L, PlanningTeacher, group2, timeslot2, room2, false, false);
 
         // When/Then: Should penalize with 120 SOFT (120 minutes gap)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::minimizeTeacherGaps)
-            .given(lesson1, lesson2, teacher, timeslot1, timeslot2, room1, room2)
+            .given(lesson1, lesson2, PlanningTeacher, timeslot1, timeslot2, room1, room2)
             .penalizesBy(120);
     }
 
     @Test
     @DisplayName("Minimize gaps: No penalty for consecutive lessons")
     void noPenaltyForTeacherGaps_consecutiveLessons() {
-        // Given: Teacher has consecutive lessons (9:00-10:00, 10:00-11:00)
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room1 = createRoom(1L, "Studio A", 20, false);
-        Room room2 = createRoom(2L, "Studio B", 15, false);
-        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
+        // Given: PlanningTeacher has consecutive lessons (9:00-10:00, 10:00-11:00)
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom room1 = createRoom(1L, "Studio A", 20, false);
+        PlanningRoom room2 = createRoom(2L, "Studio B", 15, false);
+        PlanningTimeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTimeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
 
-        Lesson lesson1 = createLesson(1L, teacher, group1, timeslot1, room1, false, false);
-        Lesson lesson2 = createLesson(2L, teacher, group2, timeslot2, room2, false, false);
+        PlanningLesson lesson1 = createLesson(1L, PlanningTeacher, group1, timeslot1, room1, false, false);
+        PlanningLesson lesson2 = createLesson(2L, PlanningTeacher, group2, timeslot2, room2, false, false);
 
         // When/Then: No penalty (no gap)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::minimizeTeacherGaps)
-            .given(lesson1, lesson2, teacher, timeslot1, timeslot2, room1, room2)
+            .given(lesson1, lesson2, PlanningTeacher, timeslot1, timeslot2, room1, room2)
             .penalizesBy(0);
     }
 
     @Test
     @DisplayName("Minimize gaps: No penalty for different days")
     void noPenaltyForTeacherGaps_differentDays() {
-        // Given: Teacher has lessons on different days
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room1 = createRoom(1L, "Studio A", 20, false);
-        Room room2 = createRoom(2L, "Studio B", 15, false);
-        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.TUESDAY, "09:00", "10:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
+        // Given: PlanningTeacher has lessons on different days
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom room1 = createRoom(1L, "Studio A", 20, false);
+        PlanningRoom room2 = createRoom(2L, "Studio B", 15, false);
+        PlanningTimeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTimeslot timeslot2 = createTimeslot(2L, DayOfWeek.TUESDAY, "09:00", "10:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
 
-        Lesson lesson1 = createLesson(1L, teacher, group1, timeslot1, room1, false, false);
-        Lesson lesson2 = createLesson(2L, teacher, group2, timeslot2, room2, false, false);
+        PlanningLesson lesson1 = createLesson(1L, PlanningTeacher, group1, timeslot1, room1, false, false);
+        PlanningLesson lesson2 = createLesson(2L, PlanningTeacher, group2, timeslot2, room2, false, false);
 
         // When/Then: No penalty (different days)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::minimizeTeacherGaps)
-            .given(lesson1, lesson2, teacher, timeslot1, timeslot2, room1, room2)
+            .given(lesson1, lesson2, PlanningTeacher, timeslot1, timeslot2, room1, room2)
             .penalizesBy(0);
     }
 
@@ -330,200 +332,187 @@ class DanceScheduleConstraintProviderTest {
     @DisplayName("Minimize gaps: No penalty for different teachers")
     void noPenaltyForTeacherGaps_differentTeachers() {
         // Given: Different teachers on same day
-        Teacher teacher1 = createTeacher(1L, "John Doe");
-        Teacher teacher2 = createTeacher(2L, "Jane Smith");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "12:00", "13:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
+        PlanningTeacher teacher1 = createTeacher(1L, "John Doe");
+        PlanningTeacher teacher2 = createTeacher(2L, "Jane Smith");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTimeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "12:00", "13:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
 
-        Lesson lesson1 = createLesson(1L, teacher1, group1, timeslot1, room, false, false);
-        Lesson lesson2 = createLesson(2L, teacher2, group2, timeslot2, room, false, false);
+        PlanningLesson lesson1 = createLesson(1L, teacher1, group1, timeslot1, PlanningRoom, false, false);
+        PlanningLesson lesson2 = createLesson(2L, teacher2, group2, timeslot2, PlanningRoom, false, false);
 
         // When/Then: No penalty (different teachers)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::minimizeTeacherGaps)
-            .given(lesson1, lesson2, teacher1, teacher2, timeslot1, timeslot2, room)
+            .given(lesson1, lesson2, teacher1, teacher2, timeslot1, timeslot2, PlanningRoom)
             .penalizesBy(0);
     }
 
     // ==================== SOFT CONSTRAINT: Prime-Time Reward ====================
 
     @Test
-    @DisplayName("Prime-Time: Reward for lesson during prime hours")
+    @DisplayName("Prime-Time: Reward for PlanningLesson during prime hours")
     void rewardForPrimeTime_lessonAt18() {
-        // Given: Lesson at 18:00 (within 16:00-21:00 prime time)
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
-        DanceGroup group = createDanceGroup(1L, "Group 1");
+        // Given: PlanningLesson at 18:00 (within 16:00-21:00 prime time)
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
+        PlanningDanceGroup group = createDanceGroup(1L, "Group 1");
 
-        Lesson lesson = createLesson(1L, teacher, group, timeslot, room, false, false);
+        PlanningLesson PlanningLesson = createLesson(1L, PlanningTeacher, group, PlanningTimeslot, PlanningRoom, false, false);
 
         // When/Then: Should reward with 1 SOFT
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::rewardPrimeTime)
-            .given(lesson, teacher, room, timeslot, group)
+            .given(PlanningLesson, PlanningTeacher, PlanningRoom, PlanningTimeslot, group)
             .rewardsWith(1);
     }
 
     @Test
-    @DisplayName("Prime-Time: Reward for lesson at 16:00")
+    @DisplayName("Prime-Time: Reward for PlanningLesson at 16:00")
     void rewardForPrimeTime_lessonAt16() {
-        // Given: Lesson at 16:00 (start of prime time)
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00");
-        DanceGroup group = createDanceGroup(1L, "Group 1");
+        // Given: PlanningLesson at 16:00 (start of prime time)
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00");
+        PlanningDanceGroup group = createDanceGroup(1L, "Group 1");
 
-        Lesson lesson = createLesson(1L, teacher, group, timeslot, room, false, false);
+        PlanningLesson PlanningLesson = createLesson(1L, PlanningTeacher, group, PlanningTimeslot, PlanningRoom, false, false);
 
         // When/Then: Should reward with 1 SOFT
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::rewardPrimeTime)
-            .given(lesson, teacher, room, timeslot, group)
+            .given(PlanningLesson, PlanningTeacher, PlanningRoom, PlanningTimeslot, group)
             .rewardsWith(1);
     }
 
     @Test
-    @DisplayName("Prime-Time: No reward for lesson before prime time")
+    @DisplayName("Prime-Time: No reward for PlanningLesson before prime time")
     void noRewardForPrimeTime_lessonAt15() {
-        // Given: Lesson at 15:00 (before prime time)
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "15:00", "16:00");
-        DanceGroup group = createDanceGroup(1L, "Group 1");
+        // Given: PlanningLesson at 15:00 (before prime time)
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "15:00", "16:00");
+        PlanningDanceGroup group = createDanceGroup(1L, "Group 1");
 
-        Lesson lesson = createLesson(1L, teacher, group, timeslot, room, false, false);
+        PlanningLesson PlanningLesson = createLesson(1L, PlanningTeacher, group, PlanningTimeslot, PlanningRoom, false, false);
 
         // When/Then: No reward
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::rewardPrimeTime)
-            .given(lesson, teacher, room, timeslot, group)
+            .given(PlanningLesson, PlanningTeacher, PlanningRoom, PlanningTimeslot, group)
             .rewardsWith(0);
     }
 
     @Test
-    @DisplayName("Prime-Time: No reward for lesson after prime time")
+    @DisplayName("Prime-Time: No reward for PlanningLesson after prime time")
     void noRewardForPrimeTime_lessonAt21() {
-        // Given: Lesson at 21:00 (after prime time)
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "21:00", "22:00");
-        DanceGroup group = createDanceGroup(1L, "Group 1");
+        // Given: PlanningLesson at 21:00 (after prime time)
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot PlanningTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "21:00", "22:00");
+        PlanningDanceGroup group = createDanceGroup(1L, "Group 1");
 
-        Lesson lesson = createLesson(1L, teacher, group, timeslot, room, false, false);
+        PlanningLesson PlanningLesson = createLesson(1L, PlanningTeacher, group, PlanningTimeslot, PlanningRoom, false, false);
 
         // When/Then: No reward
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::rewardPrimeTime)
-            .given(lesson, teacher, room, timeslot, group)
+            .given(PlanningLesson, PlanningTeacher, PlanningRoom, PlanningTimeslot, group)
             .rewardsWith(0);
     }
 
     // ==================== SOFT CONSTRAINT: Load Balancing ====================
 
     @Test
-    @DisplayName("Load Balancing: Penalty for teacher with many lessons")
+    @DisplayName("Load Balancing: Penalty for PlanningTeacher with many lessons")
     void penaltyForLoadBalance_manyLessons() {
-        // Given: One teacher with 3 lessons (penalty = 9 for one teacher: 3*3)
-        Teacher teacher = createTeacher(1L, "John Doe");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
-        Timeslot timeslot3 = createTimeslot(3L, DayOfWeek.MONDAY, "11:00", "12:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
-        DanceGroup group3 = createDanceGroup(3L, "Group 3");
+        // Given: One PlanningTeacher with 3 lessons (penalty = 9 for one PlanningTeacher: 3*3)
+        PlanningTeacher PlanningTeacher = createTeacher(1L, "John Doe");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTimeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
+        PlanningTimeslot timeslot3 = createTimeslot(3L, DayOfWeek.MONDAY, "11:00", "12:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
+        PlanningDanceGroup group3 = createDanceGroup(3L, "Group 3");
 
-        Lesson lesson1 = createLesson(1L, teacher, group1, timeslot1, room, false, false);
-        Lesson lesson2 = createLesson(2L, teacher, group2, timeslot2, room, false, false);
-        Lesson lesson3 = createLesson(3L, teacher, group3, timeslot3, room, false, false);
+        PlanningLesson lesson1 = createLesson(1L, PlanningTeacher, group1, timeslot1, PlanningRoom, false, false);
+        PlanningLesson lesson2 = createLesson(2L, PlanningTeacher, group2, timeslot2, PlanningRoom, false, false);
+        PlanningLesson lesson3 = createLesson(3L, PlanningTeacher, group3, timeslot3, PlanningRoom, false, false);
 
         // When/Then: Should penalize with 9 SOFT (3 * 3 = 9)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::balanceTeacherLoad)
-            .given(lesson1, lesson2, lesson3, teacher, room, timeslot1, timeslot2, timeslot3)
+            .given(lesson1, lesson2, lesson3, PlanningTeacher, PlanningRoom, timeslot1, timeslot2, timeslot3)
             .penalizesBy(9);
     }
 
     @Test
     @DisplayName("Load Balancing: Lower penalty for balanced distribution")
     void lowerPenaltyForLoadBalance_balanced() {
-        // Given: Two teachers with 1 lesson each (total penalty = 2: 1*1 + 1*1)
-        Teacher teacher1 = createTeacher(1L, "Teacher 1");
-        Teacher teacher2 = createTeacher(2L, "Teacher 2");
-        Room room = createRoom(1L, "Studio A", 20, false);
-        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
-        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
-        DanceGroup group1 = createDanceGroup(1L, "Group 1");
-        DanceGroup group2 = createDanceGroup(2L, "Group 2");
+        // Given: Two teachers with 1 PlanningLesson each (total penalty = 2: 1*1 + 1*1)
+        PlanningTeacher teacher1 = createTeacher(1L, "PlanningTeacher 1");
+        PlanningTeacher teacher2 = createTeacher(2L, "PlanningTeacher 2");
+        PlanningRoom PlanningRoom = createRoom(1L, "Studio A", 20, false);
+        PlanningTimeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        PlanningTimeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
+        PlanningDanceGroup group1 = createDanceGroup(1L, "Group 1");
+        PlanningDanceGroup group2 = createDanceGroup(2L, "Group 2");
 
-        Lesson lesson1 = createLesson(1L, teacher1, group1, timeslot1, room, false, false);
-        Lesson lesson2 = createLesson(2L, teacher2, group2, timeslot2, room, false, false);
+        PlanningLesson lesson1 = createLesson(1L, teacher1, group1, timeslot1, PlanningRoom, false, false);
+        PlanningLesson lesson2 = createLesson(2L, teacher2, group2, timeslot2, PlanningRoom, false, false);
 
         // When/Then: Should penalize with 2 SOFT (1*1 + 1*1 = 2)
-        // This is LESS than having one teacher with 2 lessons (2*2 = 4)
+        // This is LESS than having one PlanningTeacher with 2 lessons (2*2 = 4)
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::balanceTeacherLoad)
-            .given(lesson1, lesson2, teacher1, teacher2, room, timeslot1, timeslot2)
+            .given(lesson1, lesson2, teacher1, teacher2, PlanningRoom, timeslot1, timeslot2)
             .penalizesBy(2);
     }
 
-    // ==================== Test Data Builders ====================
+    // ==================== Test Data Builders (Planning POJOs) ====================
 
-    private Room createRoom(Long id, String name, int capacity, boolean allowsParallelPrivate) {
-        Room room = new Room();
-        room.setId(id);
-        room.setName(name);
-        room.setCapacity(capacity);
-        room.setAllowsParallelPrivate(allowsParallelPrivate);
-        return room;
+    private PlanningRoom createRoom(Long id, String name, int capacity, boolean allowsParallelPrivate) {
+        return new PlanningRoom(id, name, capacity, allowsParallelPrivate);
     }
 
-    private Timeslot createTimeslot(Long id, DayOfWeek dayOfWeek, String startTime, String endTime) {
-        Timeslot timeslot = new Timeslot();
-        timeslot.setId(id);
-        timeslot.setDayOfWeek(dayOfWeek);
-        timeslot.setStartTime(LocalTime.parse(startTime));
-        timeslot.setEndTime(LocalTime.parse(endTime));
-        return timeslot;
+    private PlanningTimeslot createTimeslot(Long id, DayOfWeek dayOfWeek, String startTime, String endTime) {
+        return new PlanningTimeslot(
+            id,
+            dayOfWeek,
+            LocalTime.parse(startTime),
+            LocalTime.parse(endTime)
+        );
     }
 
-    private Teacher createTeacher(Long id, String fullName) {
-        Teacher teacher = new Teacher();
-        teacher.setId(id);
-        teacher.setFullName(fullName);
-        teacher.setEmail(fullName.toLowerCase().replace(" ", ".") + "@example.com");
-        teacher.setMaxDailyHours(8);
-        teacher.setColorCode("#FF5733");
-        return teacher;
+    private PlanningTeacher createTeacher(Long id, String fullName) {
+        return new PlanningTeacher(
+            id,
+            fullName,
+            fullName.toLowerCase().replace(" ", ".") + "@example.com",
+            8,
+            "#FF5733"
+        );
     }
 
-    private DanceGroup createDanceGroup(Long id, String name) {
-        DanceGroup group = new DanceGroup();
-        group.setId(id);
-        group.setName(name);
-        return group;
+    private PlanningDanceGroup createDanceGroup(Long id, String name) {
+        return new PlanningDanceGroup(id, name, null, DanceLevel.BEGINNER, 5);
     }
 
-    private Lesson createLesson(Long id, Teacher teacher, DanceGroup group,
-                               Timeslot timeslot, Room room,
-                               boolean isPrivate, boolean isPinned) {
-        Lesson lesson = new Lesson();
-        lesson.setId(id);
-        lesson.setTeacher(teacher);
-        lesson.setDanceGroup(group);
-        lesson.setTimeslot(timeslot);
-        lesson.setRoom(room);
-        lesson.setDurationMinutes(60);
-        lesson.setPrivate(isPrivate);
-        lesson.setPinned(isPinned);
-        return lesson;
+    private PlanningLesson createLesson(Long id, PlanningTeacher PlanningTeacher, PlanningDanceGroup group,
+                                       PlanningTimeslot PlanningTimeslot, PlanningRoom PlanningRoom,
+                                       boolean isPrivate, boolean isPinned) {
+        PlanningLesson PlanningLesson = new PlanningLesson();
+        PlanningLesson.setId(id);
+        PlanningLesson.setTeacher(PlanningTeacher);
+        PlanningLesson.setDanceGroup(group);
+        PlanningLesson.setTimeslot(PlanningTimeslot);
+        PlanningLesson.setRoom(PlanningRoom);
+        PlanningLesson.setDurationMinutes(60);
+        PlanningLesson.setPrivate(isPrivate);
+        PlanningLesson.setPinned(isPinned);
+        return PlanningLesson;
     }
 
-    private ResourceUnavailability createUnavailability(Long id, Teacher teacher,
-                                                       Timeslot timeslot, String reason) {
-        ResourceUnavailability unavailability = new ResourceUnavailability();
-        unavailability.setId(id);
-        unavailability.setTeacher(teacher);
-        unavailability.setTimeslot(timeslot);
-        unavailability.setReason(reason);
-        return unavailability;
+    private PlanningResourceUnavailability createUnavailability(Long id, Long teacherId,
+                                                                Long timeslotId, String reason) {
+        return new PlanningResourceUnavailability(id, teacherId, timeslotId, reason);
     }
 }
 

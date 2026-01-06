@@ -2,6 +2,7 @@ package com.timetable.backend.service;
 
 import com.timetable.backend.domain.dto.CreateTeacherRequest;
 import com.timetable.backend.domain.dto.TeacherResponse;
+import com.timetable.backend.domain.exception.BusinessRuleViolationException;
 import com.timetable.backend.domain.mapper.TeacherMapper;
 import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Role;
@@ -19,9 +20,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Implementation of teacher service.
+ * Handles teacher creation with role assignment and dance style associations.
+ */
 @Service
 @RequiredArgsConstructor
-public class TeacherService {
+@Transactional(readOnly = true)
+public class TeacherService implements ITeacherService {
 
     private final TeacherRepository teacherRepository;
     private final UserRepository userRepository;
@@ -44,12 +50,13 @@ public class TeacherService {
      *
      * @param request the DTO containing teacher details (email, password, name, styles).
      * @return the created TeacherResponse DTO.
-     * @throws IllegalArgumentException if a user with the given email already exists or if any dance style ID is invalid.
+     * @throws BusinessRuleViolationException if a user with the given email already exists or if any dance style ID is invalid.
      */
+    @Override
     @Transactional
     public TeacherResponse createTeacher(CreateTeacherRequest request) {
         if (userRepository.existsByEmail(request.email())) {
-            throw new IllegalArgumentException("Email already in use");
+            throw new BusinessRuleViolationException("Email already in use: " + request.email());
         }
 
         Role teacherRole = roleRepository.findByName("TEACHER")
@@ -65,7 +72,7 @@ public class TeacherService {
             List<DanceStyle> styles = danceStyleRepository.findAllById(requestedStyleIds);
 
             if (styles.size() != requestedStyleIds.size()) {
-                throw new IllegalArgumentException("One or more DanceStyle IDs not found");
+                throw new BusinessRuleViolationException("One or more DanceStyle IDs not found");
             }
             teacher.setDanceStyles(new HashSet<>(styles));
         }

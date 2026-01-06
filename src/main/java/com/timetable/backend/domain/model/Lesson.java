@@ -1,49 +1,47 @@
 package com.timetable.backend.domain.model;
 
-import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
-import ai.timefold.solver.core.api.domain.entity.PlanningPin;
-import ai.timefold.solver.core.api.domain.lookup.PlanningId;
-import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Min;
 import lombok.*;
 
 /**
- * Represents a lesson that needs to be scheduled.
- * This is the main planning entity - Timefold Solver will assign timeslot and room.
+ * JPA Entity representing a lesson in the database.
+ *
+ * REFACTORED: Timefold annotations removed and moved to PlanningLesson.
+ * This entity is now used ONLY for persistence.
+ * For solving, convert to PlanningLesson via PlanningModelMapper.
  */
 @Entity
 @Table(name = "lessons")
-@PlanningEntity
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
+@ToString(exclude = {"teacher", "danceGroup", "timeslot", "room"})
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Lesson {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @PlanningId
     @EqualsAndHashCode.Include
     private Long id;
 
-    @ManyToOne
+    @Version
+    private Long version;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id", nullable = false)
     private Teacher teacher;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dance_group_id", nullable = false)
     private DanceGroup danceGroup;
 
-    @PlanningVariable(valueRangeProviderRefs = "timeslotRange")
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "timeslot_id")
     private Timeslot timeslot;
 
-    @PlanningVariable(valueRangeProviderRefs = "roomRange")
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "room_id")
     private Room room;
 
@@ -51,7 +49,6 @@ public class Lesson {
     @Column(name = "duration_minutes", nullable = false)
     private int durationMinutes = 60;
 
-    @PlanningPin
     @Column(name = "is_pinned", nullable = false)
     private boolean pinned = false;
 

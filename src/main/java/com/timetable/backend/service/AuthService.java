@@ -1,5 +1,6 @@
 package com.timetable.backend.service;
 
+import com.timetable.backend.domain.exception.BusinessRuleViolationException;
 import com.timetable.backend.domain.model.Role;
 import com.timetable.backend.domain.model.Student;
 import com.timetable.backend.domain.repository.RoleRepository;
@@ -12,12 +13,18 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 
+/**
+ * Implementation of authentication service.
+ * Handles user registration and JWT-based authentication.
+ */
 @Service
 @RequiredArgsConstructor
-public class AuthService {
+@Transactional(readOnly = true)
+public class AuthService implements IAuthService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -25,9 +32,11 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
 
+    @Override
+    @Transactional
     public String registerStudent(String email, String password, String fullName, LocalDate birthDate) {
         if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("Email already in use");
+            throw new BusinessRuleViolationException("Email already in use: " + email);
         }
         Role studentRole = roleRepository.findByName("STUDENT").orElseGet(() -> roleRepository.save(new Role(null, "STUDENT")));
         Student student = new Student();
@@ -41,6 +50,7 @@ public class AuthService {
         return jwtService.generateToken(ud);
     }
 
+    @Override
     public String authenticate(String email, String password) {
         Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(email, password));
         UserDetails ud = (UserDetails) authentication.getPrincipal();

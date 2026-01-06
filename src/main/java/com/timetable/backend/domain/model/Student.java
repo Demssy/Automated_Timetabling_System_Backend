@@ -16,6 +16,9 @@ import java.time.LocalDate;
 @ToString(callSuper = true)
 public class Student extends AbstractUser {
 
+    @Version
+    private Long version;
+
     @Past
     @Column(name = "birth_date")
     private LocalDate birthDate;

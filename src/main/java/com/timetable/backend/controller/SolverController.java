@@ -4,7 +4,7 @@ import ai.timefold.solver.core.api.solver.SolverStatus;
 import com.timetable.backend.domain.dto.*;
 import com.timetable.backend.domain.mapper.LessonMapper;
 import com.timetable.backend.service.SolverService;
-import com.timetable.backend.solver.DanceSchedule;
+import com.timetable.backend.solver.domain.TimetableSolution;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -18,9 +18,11 @@ import java.util.stream.Collectors;
 /**
  * REST Controller for Timefold Solver operations.
  * Provides endpoints for schedule optimization and monitoring.
+ *
+ * REFACTORED: Updated to work with TimetableSolution (Planning Model).
  */
 @RestController
-@RequestMapping("/api/solver")
+@RequestMapping("/api/v1/solver")
 @RequiredArgsConstructor
 @Slf4j
 public class SolverController {
@@ -137,7 +139,7 @@ public class SolverController {
         log.info("Retrieving current solution from database for schedule ID: {}", scheduleId);
 
         try {
-            DanceSchedule solution = solverService.getCurrentSolutionFromDatabase(scheduleId);
+            TimetableSolution solution = solverService.getCurrentSolutionFromDatabase(scheduleId);
 
             if (solution == null) {
                 return ResponseEntity
@@ -145,9 +147,20 @@ public class SolverController {
                     .build();
             }
 
-            // Map lessons to DTOs using LessonMapper
+            // Map Planning lessons to DTOs
             List<ScheduledLessonDTO> lessonDTOs = solution.getLessonList().stream()
-                .map(lessonMapper::toScheduledLessonDTO)
+                .map(planningLesson -> new ScheduledLessonDTO(
+                    planningLesson.getId(),
+                    planningLesson.getTeacher() != null ? planningLesson.getTeacher().getFullName() : null,
+                    planningLesson.getDanceGroup() != null ? planningLesson.getDanceGroup().getName() : null,
+                    planningLesson.getTimeslot() != null ? planningLesson.getTimeslot().getDayOfWeek() : null,
+                    planningLesson.getTimeslot() != null ? planningLesson.getTimeslot().getStartTime() : null,
+                    planningLesson.getTimeslot() != null ? planningLesson.getTimeslot().getEndTime() : null,
+                    planningLesson.getRoom() != null ? planningLesson.getRoom().getName() : null,
+                    planningLesson.getDurationMinutes(),
+                    planningLesson.isPrivate(),
+                    planningLesson.isPinned()
+                ))
                 .collect(Collectors.toList());
 
             boolean fullyAssigned = solverService.isFullyAssigned(solution);

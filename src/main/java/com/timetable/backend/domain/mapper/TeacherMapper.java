@@ -15,6 +15,7 @@ public interface TeacherMapper {
     TeacherResponse toTeacherResponse(Teacher teacher);
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "version", ignore = true)
     @Mapping(target = "role", ignore = true)
     @Mapping(target = "active", constant = "true")
     @Mapping(target = "passwordHash", ignore = true)
@@ -34,5 +35,6 @@ public interface TeacherMapper {
     @Mapping(target = "role", ignore = true)
     @Mapping(target = "active", ignore = true)
     @Mapping(target = "danceStyles", ignore = true)  // Handle separately in service
+    @Mapping(target = "version", ignore = true)  // JPA manages version automatically
     void updateTeacherFromDto(UpdateTeacherRequest dto, @MappingTarget Teacher entity);
 }

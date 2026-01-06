@@ -4,6 +4,7 @@ import com.timetable.backend.domain.dto.DanceStyleDTO;
 import com.timetable.backend.domain.dto.DanceStylesResponse;
 import com.timetable.backend.domain.dto.RoomDTO;
 import com.timetable.backend.domain.dto.RoomsResponse;
+import com.timetable.backend.domain.exception.ResourceNotFoundException;
 import com.timetable.backend.domain.mapper.DictionaryMapper;
 import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Room;
@@ -16,10 +17,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Optional;
 
 @RestController
-@RequestMapping("/api/dictionaries")
+@RequestMapping("/api/v1/dictionaries")
 @RequiredArgsConstructor
 public class DictionaryController {
 
@@ -49,31 +49,33 @@ public class DictionaryController {
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/rooms/{id}")
     public ResponseEntity<RoomDTO> getRoom(@PathVariable Long id) {
-        Optional<Room> r = roomRepository.findById(id);
-        return r.map(room -> ResponseEntity.ok(dictionaryMapper.toRoomDTO(room)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        Room room = roomRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Room", id));
+        return ResponseEntity.ok(dictionaryMapper.toRoomDTO(room));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/rooms/{id}")
     public ResponseEntity<RoomDTO> updateRoom(@PathVariable Long id, @Valid @RequestBody RoomDTO updated) {
-        return roomRepository.findById(id).map(r -> {
-            r.setName(updated.name());
-            r.setCapacity(updated.capacity());
-            r.setAllowsParallelPrivate(updated.allowsParallelPrivate());
-            roomRepository.save(r);
-            return ResponseEntity.ok(dictionaryMapper.toRoomDTO(r));
-        }).orElseGet(() -> ResponseEntity.notFound().build());
+        Room room = roomRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Room", id));
+
+        room.setName(updated.name());
+        room.setCapacity(updated.capacity());
+        room.setAllowsParallelPrivate(updated.allowsParallelPrivate());
+        roomRepository.save(room);
+
+        return ResponseEntity.ok(dictionaryMapper.toRoomDTO(room));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/rooms/{id}")
-    public ResponseEntity<?> deleteRoom(@PathVariable Long id) {
-        if (roomRepository.existsById(id)) {
-            roomRepository.deleteById(id);
-            return ResponseEntity.ok().build();
+    public ResponseEntity<Void> deleteRoom(@PathVariable Long id) {
+        if (!roomRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Room", id);
         }
-        return ResponseEntity.notFound().build();
+        roomRepository.deleteById(id);
+        return ResponseEntity.ok().build();
     }
 
     // Dance styles (ROLE_ADMIN)
@@ -98,28 +100,30 @@ public class DictionaryController {
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/styles/{id}")
     public ResponseEntity<DanceStyleDTO> getStyle(@PathVariable Long id) {
-        Optional<DanceStyle> s = danceStyleRepository.findById(id);
-        return s.map(style -> ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(style)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        DanceStyle style = danceStyleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DanceStyle", id));
+        return ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(style));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/styles/{id}")
     public ResponseEntity<DanceStyleDTO> updateStyle(@PathVariable Long id, @Valid @RequestBody DanceStyleDTO updated) {
-        return danceStyleRepository.findById(id).map(s -> {
-            s.setName(updated.name());
-            danceStyleRepository.save(s);
-            return ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(s));
-        }).orElseGet(() -> ResponseEntity.notFound().build());
+        DanceStyle style = danceStyleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DanceStyle", id));
+
+        style.setName(updated.name());
+        danceStyleRepository.save(style);
+
+        return ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(style));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/styles/{id}")
-    public ResponseEntity<?> deleteStyle(@PathVariable Long id) {
-        if (danceStyleRepository.existsById(id)) {
-            danceStyleRepository.deleteById(id);
-            return ResponseEntity.ok().build();
+    public ResponseEntity<Void> deleteStyle(@PathVariable Long id) {
+        if (!danceStyleRepository.existsById(id)) {
+            throw new ResourceNotFoundException("DanceStyle", id);
         }
-        return ResponseEntity.notFound().build();
+        danceStyleRepository.deleteById(id);
+        return ResponseEntity.ok().build();
     }
 }

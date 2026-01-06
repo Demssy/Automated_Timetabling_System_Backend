@@ -4,24 +4,32 @@ import ai.timefold.solver.core.api.solver.SolverManager;
 import ai.timefold.solver.core.api.solver.SolverStatus;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
-import com.timetable.backend.solver.DanceSchedule;
+import com.timetable.backend.solver.domain.TimetableSolution;
+import com.timetable.backend.solver.mapper.PlanningModelMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
- * Service for managing Timefold Solver operations.
+ * Implementation of solver service for Timefold Solver operations.
  * Handles asynchronous schedule optimization and result persistence.
+ *
+ * REFACTORED: Now uses Planning Model (Pure POJOs) instead of JPA entities.
+ * This eliminates Hibernate overhead and N+1 query risks during solving.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class SolverService {
+@Transactional(readOnly = true)
+public class SolverService implements ISolverService {
 
-    private final SolverManager<DanceSchedule, Long> solverManager;
+    private final SolverManager<TimetableSolution, Long> solverManager;
+    private final PlanningModelMapper planningMapper;
 
     // Repositories
     private final LessonRepository lessonRepository;
@@ -32,6 +40,9 @@ public class SolverService {
 
     /**
      * Loads the problem from database and starts solving asynchronously.
+     *
+     * REFACTORED: Now converts JPA entities to Planning POJOs before solving.
+     * This ensures zero Hibernate overhead during optimization.
      *
      * @param scheduleId unique identifier for this solving session (can be any Long, e.g., timestamp)
      */
@@ -47,82 +58,72 @@ public class SolverService {
             .run();
 
         log.info("Solver started for schedule {}", scheduleId);
-
     }
 
     /**
      * Internal method to load problem (to avoid @Transactional self-invocation issue).
      */
     @Transactional(readOnly = true)
-    public DanceSchedule loadProblemInternal(Long scheduleId) {
+    public TimetableSolution loadProblemInternal(Long scheduleId) {
         return loadProblem(scheduleId);
     }
 
     /**
-     * Loads the planning problem from the database.
-     * Creates a DanceSchedule with all problem facts and planning entities.
+     * Loads the planning problem from the database and converts to Planning Model.
+     *
+     * REFACTORED: Uses PlanningModelMapper to convert JPA entities to lightweight POJOs.
+     * This eliminates Hibernate proxies and ensures fast cloning during solving.
      *
      * @param scheduleId the schedule identifier
-     * @return DanceSchedule ready for optimization
+     * @return TimetableSolution ready for optimization (Planning POJOs, not JPA entities)
      */
     @Transactional(readOnly = true)
-    public DanceSchedule loadProblem(Long scheduleId) {
-        DanceSchedule schedule = loadScheduleFromDatabase(scheduleId);
-
-        // Clear planning variables for non-pinned lessons
-        // (Solver will assign timeslot and room)
-        schedule.getLessonList().forEach(lesson -> {
-            if (!lesson.isPinned()) {
-                lesson.setTimeslot(null);
-                lesson.setRoom(null);
-            }
-        });
-
-        return schedule;
-    }
-
-    /**
-     * Private helper method to load schedule data from database.
-     * Extracts common data loading logic to avoid code duplication.
-     *
-     * @param scheduleId the schedule identifier
-     * @return DanceSchedule with all data loaded from database
-     */
-    private DanceSchedule loadScheduleFromDatabase(Long scheduleId) {
+    public TimetableSolution loadProblem(Long scheduleId) {
         log.info("Loading problem data from database for schedule ID: {}", scheduleId);
 
-        // Load all problem facts (immutable data)
+        // 1. Load JPA entities from database (with eager fetching to avoid LazyInit)
         List<Timeslot> timeslots = timeslotRepository.findAll();
         List<Room> rooms = roomRepository.findAll();
         List<Teacher> teachers = teacherRepository.findAll();
-        List<ResourceUnavailability> resourceUnavailabilities = resourceUnavailabilityRepository.findAll();
-
-        // Load all planning entities (lessons to be scheduled)
+        List<ResourceUnavailability> unavailabilities = resourceUnavailabilityRepository.findAll();
         List<Lesson> lessons = lessonRepository.findAll();
-
 
         log.info("Loaded {} timeslots, {} rooms, {} teachers, {} lessons",
             timeslots.size(), rooms.size(), teachers.size(), lessons.size());
 
-        // Create and return the planning problem
-        return new DanceSchedule(
+        // 2. Convert JPA entities to Planning POJOs via mapper
+        // This unproxies Hibernate entities and creates lightweight clones
+        TimetableSolution solution = planningMapper.toPlanningSolution(
             scheduleId,
+            lessons,
             timeslots,
             rooms,
             teachers,
-            resourceUnavailabilities,
-            lessons
+            unavailabilities
         );
+
+        // 3. Clear planning variables for non-pinned lessons
+        // (Solver will assign timeslot and room during optimization)
+        solution.getLessonList().forEach(planningLesson -> {
+            if (!planningLesson.isPinned()) {
+                planningLesson.setTimeslot(null);
+                planningLesson.setRoom(null);
+            }
+        });
+
+        return solution;
     }
 
     /**
      * Saves the optimized solution back to the database.
-     * Updates timeslot and room assignments for all lessons.
      *
-     * @param solution the solved DanceSchedule
+     * REFACTORED: Converts Planning POJOs back to JPA entities via mapper.
+     * Only updates timeslot and room assignments (planning variables).
+     *
+     * @param solution the solved TimetableSolution (Planning Model)
      */
     @Transactional
-    public void saveSolution(DanceSchedule solution) {
+    public void saveSolution(TimetableSolution solution) {
         log.info("Saving solution for schedule ID: {}, score: {}",
             solution.getId(), solution.getScore());
 
@@ -131,28 +132,38 @@ public class SolverService {
             return;
         }
 
-        // Update lessons with assigned timeslots and rooms
-        solution.getLessonList().forEach(lesson -> {
+        // 1. Create lookup maps for timeslots and rooms (for mapper)
+        Map<Long, Timeslot> timeslotMap = timeslotRepository.findAll().stream()
+            .collect(Collectors.toMap(Timeslot::getId, t -> t));
+        Map<Long, Room> roomMap = roomRepository.findAll().stream()
+            .collect(Collectors.toMap(Room::getId, r -> r));
+
+        // 2. Convert Planning Model to LessonUpdate DTOs via mapper
+        var updates = planningMapper.toPersistableLessons(solution, timeslotMap, roomMap);
+
+        // 3. Apply updates to JPA entities and persist
+        updates.forEach(update -> {
             log.info("Saving lesson {}: timeslot={}, room={}",
-                lesson.getId(),
-                lesson.getTimeslot() != null ? lesson.getTimeslot().getId() : "null",
-                lesson.getRoom() != null ? lesson.getRoom().getId() : "null");
+                update.lessonId(),
+                update.timeslotId(),
+                update.roomId());
 
-            Lesson persistedLesson = lessonRepository.findById(lesson.getId())
+            Lesson lesson = lessonRepository.findById(update.lessonId())
                 .orElseThrow(() -> new IllegalArgumentException(
-                    "Lesson not found: " + lesson.getId()));
+                    "Lesson not found: " + update.lessonId()));
 
-            // Update planning variables
-            persistedLesson.setTimeslot(lesson.getTimeslot());
-            persistedLesson.setRoom(lesson.getRoom());
-
-            lessonRepository.save(persistedLesson);
+            // Update planning variables (timeslot and room assignments)
+            lesson.setTimeslot(update.timeslotId() != null
+                ? timeslotMap.get(update.timeslotId())
+                : null);
+            lesson.setRoom(update.roomId() != null
+                ? roomMap.get(update.roomId())
+                : null);
         });
 
         lessonRepository.flush();
 
-        log.info("Successfully saved solution with {} lessons",
-            solution.getLessonList().size());
+        log.info("Successfully saved solution with {} lessons", updates.size());
     }
 
     /**
@@ -172,6 +183,7 @@ public class SolverService {
      * @param scheduleId the schedule identifier
      * @return true if termination was successful
      */
+    @Override
     public boolean terminateEarly(Long scheduleId) {
         log.info("Terminating solver early for schedule ID: {}", scheduleId);
 
@@ -195,7 +207,7 @@ public class SolverService {
      * @return the best solution found, or null if not available
      */
     @SuppressWarnings("unused")
-    public DanceSchedule getBestSolution(Long scheduleId) {
+    public TimetableSolution getBestSolution(Long scheduleId) {
         SolverStatus status = solverManager.getSolverStatus(scheduleId);
 
         if (status == SolverStatus.NOT_SOLVING) {
@@ -214,22 +226,39 @@ public class SolverService {
      * This can be called at any time, even while solving is in progress.
      * Note: This method does NOT clear planning variables, so you can see assigned timeslots and rooms.
      *
-     * @param scheduleId the schedule identifier (not used, just for consistency)
-     * @return current state of the schedule from database
+     * @param scheduleId the schedule identifier
+     * @return current state of the schedule from database as TimetableSolution
      */
+    @Override
     @Transactional(readOnly = true)
-    public DanceSchedule getCurrentSolutionFromDatabase(Long scheduleId) {
-        // Load schedule data without clearing planning variables
-        return loadScheduleFromDatabase(scheduleId);
+    public TimetableSolution getCurrentSolutionFromDatabase(Long scheduleId) {
+        log.info("Loading current solution from database for schedule ID: {}", scheduleId);
+
+        // Load JPA entities
+        List<Timeslot> timeslots = timeslotRepository.findAll();
+        List<Room> rooms = roomRepository.findAll();
+        List<Teacher> teachers = teacherRepository.findAll();
+        List<ResourceUnavailability> unavailabilities = resourceUnavailabilityRepository.findAll();
+        List<Lesson> lessons = lessonRepository.findAll();
+
+        // Convert to Planning Model (includes current assignments)
+        return planningMapper.toPlanningSolution(
+            scheduleId,
+            lessons,
+            timeslots,
+            rooms,
+            teachers,
+            unavailabilities
+        );
     }
 
     /**
      * Checks if all lessons have been assigned timeslots and rooms.
      *
-     * @param solution the DanceSchedule to check
+     * @param solution the TimetableSolution to check
      * @return true if all lessons are assigned
      */
-    public boolean isFullyAssigned(DanceSchedule solution) {
+    public boolean isFullyAssigned(TimetableSolution solution) {
         return solution.getLessonList().stream()
             .allMatch(lesson -> lesson.getTimeslot() != null && lesson.getRoom() != null);
     }

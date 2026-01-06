@@ -2,6 +2,7 @@ package com.timetable.backend.service;
 
 import com.timetable.backend.domain.dto.CreateTeacherRequest;
 import com.timetable.backend.domain.dto.TeacherResponse;
+import com.timetable.backend.domain.exception.BusinessRuleViolationException;
 import com.timetable.backend.domain.mapper.TeacherMapper;
 import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Role;
@@ -91,7 +92,7 @@ class TeacherServiceTest {
         );
         when(userRepository.existsByEmail(request.email())).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> teacherService.createTeacher(request));
+        assertThrows(BusinessRuleViolationException.class, () -> teacherService.createTeacher(request));
         verify(teacherRepository, never()).save(any());
     }
 }

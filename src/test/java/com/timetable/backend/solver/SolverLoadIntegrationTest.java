@@ -3,6 +3,7 @@ package com.timetable.backend.solver;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
 import com.timetable.backend.service.SolverService;
+import com.timetable.backend.solver.domain.TimetableSolution;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -68,7 +69,7 @@ class SolverLoadIntegrationTest {
         boolean solved = false;
         for (int i = 0; i < 15; i++) {
             Thread.sleep(5000);
-            DanceSchedule solution = solverService.getCurrentSolutionFromDatabase(scheduleId);
+            TimetableSolution solution = solverService.getCurrentSolutionFromDatabase(scheduleId);
 
             if (solution != null) {
                 long assignedCount = solution.getLessonList().stream()
@@ -85,7 +86,7 @@ class SolverLoadIntegrationTest {
         // 4. Verify
         assertThat(solved).as("Solver should assign all 50 lessons within 75 seconds").isTrue();
 
-        DanceSchedule finalSolution = solverService.getCurrentSolutionFromDatabase(scheduleId);
+        TimetableSolution finalSolution = solverService.getCurrentSolutionFromDatabase(scheduleId);
         // Note: Score might be null if read from DB before solver writes it back,
         // but since we checked assignments, at least one save happened.
         // However, the score is transient in the solution passed to saveSolution,

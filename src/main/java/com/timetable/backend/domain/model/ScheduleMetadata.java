@@ -26,6 +26,9 @@ public class ScheduleMetadata {
     @EqualsAndHashCode.Include
     private Long id;
 
+    @Version
+    private Long version;
+
     /**
      * Human-readable name for the schedule (e.g., "Fall Semester 2025", "Summer Camp Draft")
      */

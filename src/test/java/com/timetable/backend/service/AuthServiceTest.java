@@ -1,5 +1,6 @@
 package com.timetable.backend.service;
 
+import com.timetable.backend.domain.exception.BusinessRuleViolationException;
 import com.timetable.backend.domain.model.Role;
 import com.timetable.backend.domain.model.Student;
 import com.timetable.backend.domain.repository.RoleRepository;
@@ -67,7 +68,7 @@ class AuthServiceTest {
         String email = "student@test.com";
         when(userRepository.existsByEmail(email)).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(BusinessRuleViolationException.class, () ->
             authService.registerStudent(email, "password", "Name", LocalDate.now())
         );
         verify(userRepository, never()).save(any());

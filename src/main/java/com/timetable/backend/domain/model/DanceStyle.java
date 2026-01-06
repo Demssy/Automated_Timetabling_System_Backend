@@ -13,7 +13,7 @@ import java.util.Set;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
+@ToString(exclude = {"teachers"})
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class DanceStyle {
 
@@ -22,11 +22,14 @@ public class DanceStyle {
     @EqualsAndHashCode.Include
     private Long id;
 
+    @Version
+    private Long version;
+
     @Column(nullable = false, unique = true)
     @NotBlank
     private String name;
 
-    @ManyToMany(mappedBy = "danceStyles")
+    @ManyToMany(mappedBy = "danceStyles", fetch = FetchType.LAZY)
     private Set<Teacher> teachers = new HashSet<>();
 
     public DanceStyle(String name) {

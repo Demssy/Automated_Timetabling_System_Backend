@@ -13,7 +13,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
+@ToString(exclude = {"teacher", "timeslot"})
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class ResourceUnavailability {
 
@@ -22,11 +22,11 @@ public class ResourceUnavailability {
     @EqualsAndHashCode.Include
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id", nullable = false)
     private Teacher teacher;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "timeslot_id", nullable = false)
     private Timeslot timeslot;
 

@@ -1,12 +1,6 @@
 package com.timetable.backend.domain.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
-import jakarta.persistence.PrimaryKeyJoinColumn;
-import jakarta.persistence.Column;
-import jakarta.persistence.ManyToMany;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.JoinColumn;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import lombok.*;
@@ -21,8 +15,11 @@ import java.util.Set;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
+@ToString(callSuper = true, exclude = {"danceStyles"})
 public class Teacher extends AbstractUser {
+
+    @Version
+    private Long version;
 
     @Min(0)
     @Column(name = "max_daily_hours")
@@ -33,7 +30,7 @@ public class Teacher extends AbstractUser {
     @Column(name = "color_code")
     private String colorCode = "#000000";
 
-    @ManyToMany
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "teacher_dance_style",
         joinColumns = @JoinColumn(name = "teacher_id"),

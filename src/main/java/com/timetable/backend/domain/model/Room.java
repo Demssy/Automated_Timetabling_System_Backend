@@ -20,6 +20,9 @@ public class Room {
     @EqualsAndHashCode.Include
     private Long id;
 
+    @Version
+    private Long version;
+
     @Column(nullable = false, unique = true)
     @NotBlank
     private String name;

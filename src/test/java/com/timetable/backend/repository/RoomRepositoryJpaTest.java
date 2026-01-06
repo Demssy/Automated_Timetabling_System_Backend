@@ -20,7 +20,7 @@ public class RoomRepositoryJpaTest {
 
     @Test
     void saveAndFindByName() {
-        Room r = new Room(null, "Main Hall", 30, false);
+        Room r = new Room(null, null, "Main Hall", 30, false);
         roomRepository.save(r);
 
         var found = roomRepository.findByName("Main Hall");

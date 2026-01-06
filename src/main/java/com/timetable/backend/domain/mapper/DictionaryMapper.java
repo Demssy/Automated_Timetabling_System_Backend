@@ -10,10 +10,13 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface DictionaryMapper {
     RoomDTO toRoomDTO(Room room);
+
+    @Mapping(target = "version", ignore = true)
     Room toRoom(RoomDTO roomDTO);
 
     DanceStyleDTO toDanceStyleDTO(DanceStyle danceStyle);
 
     @Mapping(target = "teachers", ignore = true)
+    @Mapping(target = "version", ignore = true)
     DanceStyle toDanceStyle(DanceStyleDTO danceStyleDTO);
 }

@@ -15,7 +15,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
+@ToString(exclude = {"danceStyle"})
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class DanceGroup {
 
@@ -24,11 +24,14 @@ public class DanceGroup {
     @EqualsAndHashCode.Include
     private Long id;
 
+    @Version
+    private Long version;
+
     @Column(nullable = false)
     @NotBlank
     private String name;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dance_style_id")
     private DanceStyle danceStyle;
 

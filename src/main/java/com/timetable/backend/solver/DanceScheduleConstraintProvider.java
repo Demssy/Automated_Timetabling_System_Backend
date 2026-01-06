@@ -6,8 +6,8 @@ import ai.timefold.solver.core.api.score.stream.ConstraintCollectors;
 import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 import ai.timefold.solver.core.api.score.stream.Joiners;
-import com.timetable.backend.domain.model.Lesson;
-import com.timetable.backend.domain.model.ResourceUnavailability;
+import com.timetable.backend.solver.domain.PlanningLesson;
+import com.timetable.backend.solver.domain.PlanningResourceUnavailability;
 
 import java.time.Duration;
 import java.time.LocalTime;
@@ -15,6 +15,9 @@ import java.time.LocalTime;
 /**
  * Constraint provider for dance schedule optimization.
  * Defines hard and soft constraints for the Timefold Solver.
+ *
+ * REFACTORED: Now works with Planning Model (Pure POJOs) instead of JPA entities.
+ * This eliminates Hibernate overhead and prevents LazyInitializationException.
  *
  * Hard Constraints (must be satisfied):
  * - Room conflict: Weighted Dual-Mode logic (Group=1.0, Private=0.25)
@@ -63,9 +66,9 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint roomConflict(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
+                .forEach(PlanningLesson.class)
                 .filter(lesson -> lesson.getRoom() != null && lesson.getTimeslot() != null)
-                .groupBy(Lesson::getRoom, Lesson::getTimeslot,
+                .groupBy(PlanningLesson::getRoom, PlanningLesson::getTimeslot,
                          ConstraintCollectors.sum(this::getRoomOccupancyWeight))
                 .filter((room, timeslot, totalWeight) -> totalWeight > 100) // 100 = 100%
                 .penalize(HardSoftScore.ONE_HARD,
@@ -84,7 +87,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      * @param lesson the lesson to evaluate
      * @return occupancy weight (100 for group, 25 for private)
      */
-    private int getRoomOccupancyWeight(Lesson lesson) {
+    private int getRoomOccupancyWeight(PlanningLesson lesson) {
         return lesson.isPrivate() ? 25 : 100;
     }
 
@@ -98,14 +101,14 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint teacherConflict(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
-                .join(Lesson.class,
+                .forEach(PlanningLesson.class)
+                .join(PlanningLesson.class,
                         // Different lessons
-                        Joiners.lessThan(Lesson::getId),
+                        Joiners.lessThan(PlanningLesson::getId),
                         // Same teacher
-                        Joiners.equal(Lesson::getTeacher),
+                        Joiners.equal(PlanningLesson::getTeacher),
                         // Same timeslot
-                        Joiners.equal(Lesson::getTimeslot)
+                        Joiners.equal(PlanningLesson::getTimeslot)
                 )
                 .penalize(HardSoftScore.ONE_HARD)
                 .asConstraint("Teacher conflict");
@@ -115,19 +118,21 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      * HARD CONSTRAINT 3: Teacher Availability
      *
      * A lesson cannot be scheduled when the teacher is unavailable.
-     * This checks against the ResourceUnavailability table.
+     * This checks against the ResourceUnavailability problem facts.
      *
      * @param constraintFactory the factory to create constraints
      * @return teacher availability constraint
      */
     Constraint teacherAvailability(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
-                .join(ResourceUnavailability.class,
-                        // Same teacher
-                        Joiners.equal(Lesson::getTeacher, ResourceUnavailability::getTeacher),
-                        // Same timeslot
-                        Joiners.equal(Lesson::getTimeslot, ResourceUnavailability::getTimeslot)
+                .forEach(PlanningLesson.class)
+                .join(PlanningResourceUnavailability.class,
+                        // Same teacher (comparing by ID since Planning model uses IDs)
+                        Joiners.equal(lesson -> lesson.getTeacher().getId(),
+                                     PlanningResourceUnavailability::getTeacherId),
+                        // Same timeslot (comparing by ID)
+                        Joiners.equal(lesson -> lesson.getTimeslot() != null ? lesson.getTimeslot().getId() : null,
+                                     PlanningResourceUnavailability::getTimeslotId)
                 )
                 .penalize(HardSoftScore.ONE_HARD)
                 .asConstraint("Teacher unavailability");
@@ -147,12 +152,12 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint minimizeTeacherGaps(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
-                .join(Lesson.class,
+                .forEach(PlanningLesson.class)
+                .join(PlanningLesson.class,
                         // Different lessons
-                        Joiners.lessThan(Lesson::getId),
+                        Joiners.lessThan(PlanningLesson::getId),
                         // Same teacher
-                        Joiners.equal(Lesson::getTeacher),
+                        Joiners.equal(PlanningLesson::getTeacher),
                         // Same day of week
                         Joiners.equal(lesson -> lesson.getTimeslot() != null ?
                                 lesson.getTimeslot().getDayOfWeek() : null)
@@ -164,22 +169,20 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                     }
 
                     // Check if there's a gap between the lessons
-                    LocalTime end1 = lesson1.getTimeslot().getEndTime();
-                    LocalTime start2 = lesson2.getTimeslot().getStartTime();
-                    LocalTime end2 = lesson2.getTimeslot().getEndTime();
-                    LocalTime start1 = lesson1.getTimeslot().getStartTime();
+                    var end1 = lesson1.getTimeslot().getEndTime();
+                    var start2 = lesson2.getTimeslot().getStartTime();
+                    var end2 = lesson2.getTimeslot().getEndTime();
+                    var start1 = lesson1.getTimeslot().getStartTime();
 
                     // Gap exists if lesson1 ends before lesson2 starts (and vice versa)
-                    boolean gapExists = (end1.isBefore(start2) || end2.isBefore(start1));
-
-                    return gapExists;
+                    return (end1.isBefore(start2) || end2.isBefore(start1));
                 })
                 .penalize(HardSoftScore.ONE_SOFT, (lesson1, lesson2) -> {
                     // Calculate gap duration in minutes
-                    LocalTime end1 = lesson1.getTimeslot().getEndTime();
-                    LocalTime start2 = lesson2.getTimeslot().getStartTime();
-                    LocalTime end2 = lesson2.getTimeslot().getEndTime();
-                    LocalTime start1 = lesson1.getTimeslot().getStartTime();
+                    var end1 = lesson1.getTimeslot().getEndTime();
+                    var start2 = lesson2.getTimeslot().getStartTime();
+                    var end2 = lesson2.getTimeslot().getEndTime();
+                    var start1 = lesson1.getTimeslot().getStartTime();
 
                     // Calculate the actual gap (the one that exists)
                     if (end1.isBefore(start2)) {
@@ -206,12 +209,12 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint rewardPrimeTime(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
+                .forEach(PlanningLesson.class)
                 .filter(lesson -> {
                     if (lesson.getTimeslot() == null) {
                         return false;
                     }
-                    LocalTime start = lesson.getTimeslot().getStartTime();
+                    var start = lesson.getTimeslot().getStartTime();
                     // Prime time: 16:00 - 21:00
                     return !start.isBefore(LocalTime.of(16, 0)) &&
                            start.isBefore(LocalTime.of(21, 0));
@@ -234,11 +237,14 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint balanceTeacherLoad(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
+                .forEach(PlanningLesson.class)
                 .filter(lesson -> lesson.getTimeslot() != null)
-                .groupBy(Lesson::getTeacher, ConstraintCollectors.count())
+                .groupBy(PlanningLesson::getTeacher, ConstraintCollectors.count())
                 .penalize(HardSoftScore.ONE_SOFT,
-                         (teacher, count) -> count * count) // Square penalty for imbalance
+                         (teacher, count) -> {
+                             int lessonCount = count.intValue();
+                             return lessonCount * lessonCount; // Square penalty for imbalance
+                         })
                 .asConstraint("Balance teacher workload");
     }
 }
