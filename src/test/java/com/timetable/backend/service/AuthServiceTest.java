@@ -1,10 +1,10 @@
 package com.timetable.backend.service;
 
+import com.timetable.backend.domain.dto.UserResponse;
 import com.timetable.backend.domain.model.Role;
 import com.timetable.backend.domain.model.Student;
 import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.UserRepository;
-import com.timetable.backend.security.JwtService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -13,7 +13,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDate;
@@ -35,8 +34,6 @@ class AuthServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
-    private JwtService jwtService;
-    @Mock
     private AuthenticationManager authenticationManager;
 
     @InjectMocks
@@ -53,12 +50,13 @@ class AuthServiceTest {
         when(userRepository.existsByEmail(email)).thenReturn(false);
         when(roleRepository.findByName("STUDENT")).thenReturn(Optional.of(studentRole));
         when(passwordEncoder.encode(password)).thenReturn("encoded");
-        when(jwtService.generateToken(any(UserDetails.class))).thenReturn("jwt-token");
 
-        String token = authService.registerStudent(email, password, fullName, birthDate);
+        UserResponse response = authService.registerStudent(email, password, fullName, birthDate);
 
-        assertNotNull(token);
-        assertEquals("jwt-token", token);
+        assertNotNull(response);
+        assertEquals(email, response.email());
+        assertEquals(fullName, response.fullName());
+        assertEquals("STUDENT", response.role());
         verify(userRepository).save(any(Student.class));
     }
 
@@ -78,14 +76,21 @@ class AuthServiceTest {
         String email = "user@test.com";
         String password = "password";
         Authentication auth = mock(Authentication.class);
-        UserDetails userDetails = mock(UserDetails.class);
+
+        Student student = new Student();
+        student.setId(1L);
+        student.setEmail(email);
+        student.setFullName("Test User");
+        student.setRole(new Role(1L, "STUDENT"));
 
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(auth);
-        when(auth.getPrincipal()).thenReturn(userDetails);
-        when(jwtService.generateToken(userDetails)).thenReturn("jwt-token");
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(student));
 
-        String token = authService.authenticate(email, password);
+        UserResponse response = authService.authenticate(email, password);
 
-        assertEquals("jwt-token", token);
+        assertNotNull(response);
+        assertEquals(email, response.email());
+        assertEquals("Test User", response.fullName());
+        assertEquals("STUDENT", response.role());
     }
 }

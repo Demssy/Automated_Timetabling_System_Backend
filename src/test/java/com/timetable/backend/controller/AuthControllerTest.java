@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.timetable.backend.config.SecurityConfig;
 import com.timetable.backend.domain.dto.AuthenticationRequest;
 import com.timetable.backend.domain.dto.RegisterRequest;
+import com.timetable.backend.domain.dto.UserResponse;
 import com.timetable.backend.security.JwtAuthenticationFilter;
 import com.timetable.backend.security.JwtService;
 import com.timetable.backend.service.AuthService;
@@ -47,28 +48,40 @@ class AuthControllerTest {
         RegisterRequest request = new RegisterRequest(
                 "student@test.com", "password", "Student Name", LocalDate.of(2000, 1, 1)
         );
+        UserResponse userResponse = new UserResponse(1L, "student@test.com", "Student Name", "STUDENT", true);
+
         when(authService.registerStudent(request.email(), request.password(), request.fullName(), request.birthDate()))
-                .thenReturn("jwt-token");
+                .thenReturn(userResponse);
         when(jwtService.getExpirationMs()).thenReturn(3600000L);
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").value("jwt-token"));
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.email").value("student@test.com"))
+                .andExpect(jsonPath("$.fullName").value("Student Name"))
+                .andExpect(jsonPath("$.role").value("STUDENT"))
+                .andExpect(jsonPath("$.isActive").value(true));
     }
 
     @Test
     void login_Success() throws Exception {
         AuthenticationRequest request = new AuthenticationRequest("student@test.com", "password");
-        when(authService.authenticate(request.email(), request.password())).thenReturn("jwt-token");
+        UserResponse userResponse = new UserResponse(1L, "student@test.com", "Student Name", "STUDENT", true);
+
+        when(authService.authenticate(request.email(), request.password())).thenReturn(userResponse);
         when(jwtService.getExpirationMs()).thenReturn(3600000L);
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").value("jwt-token"));
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.email").value("student@test.com"))
+                .andExpect(jsonPath("$.fullName").value("Student Name"))
+                .andExpect(jsonPath("$.role").value("STUDENT"))
+                .andExpect(jsonPath("$.isActive").value(true));
     }
 
     @Test

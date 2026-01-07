@@ -33,6 +33,10 @@ public class ResourceUnavailability {
     @Column(name = "reason")
     private String reason;
 
+    @Version
+    @Column(name = "version")
+    private Integer version;
+
     public ResourceUnavailability(Teacher teacher, Timeslot timeslot, String reason) {
         this.teacher = teacher;
         this.timeslot = timeslot;

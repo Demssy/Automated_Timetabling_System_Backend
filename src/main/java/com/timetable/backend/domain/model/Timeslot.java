@@ -37,6 +37,10 @@ public class Timeslot {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
+    @Version
+    @Column(name = "version")
+    private Integer version;
+
     public Timeslot(DayOfWeek dayOfWeek, LocalTime startTime, LocalTime endTime) {
         this.dayOfWeek = dayOfWeek;
         this.startTime = startTime;

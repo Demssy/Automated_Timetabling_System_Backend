@@ -43,6 +43,10 @@ public class DanceGroup {
     @Column(name = "target_age_range")
     private String targetAgeRange;
 
+    @Version
+    @Column(name = "version")
+    private Integer version;
+
     public DanceGroup(String name, DanceStyle danceStyle, DanceLevel danceLevel) {
         this.name = name;
         this.danceStyle = danceStyle;

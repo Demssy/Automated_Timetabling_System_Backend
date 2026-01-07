@@ -58,6 +58,10 @@ public class Lesson {
     @Column(name = "is_private", nullable = false)
     private boolean isPrivate = false;
 
+    @Version
+    @Column(name = "version")
+    private Integer version;
+
     public Lesson(Teacher teacher, DanceGroup danceGroup, int durationMinutes, boolean isPrivate) {
         this.teacher = teacher;
         this.danceGroup = danceGroup;
