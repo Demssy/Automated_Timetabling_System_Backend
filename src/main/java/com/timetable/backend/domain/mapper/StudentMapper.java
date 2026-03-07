@@ -1,8 +1,10 @@
 package com.timetable.backend.domain.mapper;
 
+import com.timetable.backend.domain.dto.StudentDTO;
 import com.timetable.backend.domain.dto.StudentResponse;
 import com.timetable.backend.domain.model.Student;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 /**
  * MapStruct mapper for converting Student entities to DTOs.
@@ -20,5 +22,10 @@ public interface StudentMapper {
      * @return student response DTO with safe public data
      */
     StudentResponse toStudentResponse(Student student);
-}
 
+    StudentDTO toStudentDTO(Student student);
+
+    @Mapping(target = "passwordHash", ignore = true) // Handled in service
+    @Mapping(target = "role", ignore = true)
+    Student toStudent(StudentDTO studentDTO);
+}

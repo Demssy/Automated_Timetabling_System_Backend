@@ -34,7 +34,7 @@ public class AuthController {
         // Generate token for the registered user
         var userDetails = User.withUsername(userResponse.email())
                 .password("")
-                .authorities(userResponse.role())
+                .roles(userResponse.role())
                 .build();
         String token = jwtService.generateToken(userDetails);
 
@@ -49,7 +49,7 @@ public class AuthController {
         // Generate token for the authenticated user
         var userDetails = User.withUsername(userResponse.email())
                 .password("")
-                .authorities(userResponse.role())
+                .roles(userResponse.role())
                 .build();
         String token = jwtService.generateToken(userDetails);
 

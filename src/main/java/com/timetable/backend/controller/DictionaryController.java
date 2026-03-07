@@ -1,14 +1,20 @@
 package com.timetable.backend.controller;
 
+import com.timetable.backend.domain.dto.DanceGroupDTO;
 import com.timetable.backend.domain.dto.DanceStyleDTO;
 import com.timetable.backend.domain.dto.DanceStylesResponse;
 import com.timetable.backend.domain.dto.RoomDTO;
 import com.timetable.backend.domain.dto.RoomsResponse;
+import com.timetable.backend.domain.dto.TimeslotDTO;
 import com.timetable.backend.domain.mapper.DictionaryMapper;
+import com.timetable.backend.domain.model.DanceGroup;
 import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Room;
+import com.timetable.backend.domain.model.Timeslot;
+import com.timetable.backend.domain.repository.DanceGroupRepository;
 import com.timetable.backend.domain.repository.DanceStyleRepository;
 import com.timetable.backend.domain.repository.RoomRepository;
+import com.timetable.backend.domain.repository.TimeslotRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +31,8 @@ public class DictionaryController {
 
     private final RoomRepository roomRepository;
     private final DanceStyleRepository danceStyleRepository;
+    private final TimeslotRepository timeslotRepository;
+    private final DanceGroupRepository danceGroupRepository;
     private final DictionaryMapper dictionaryMapper;
 
     // Rooms (ROLE_ADMIN)
@@ -118,6 +126,116 @@ public class DictionaryController {
     public ResponseEntity<?> deleteStyle(@PathVariable Long id) {
         if (danceStyleRepository.existsById(id)) {
             danceStyleRepository.deleteById(id);
+            return ResponseEntity.ok().build();
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Timeslots (ROLE_ADMIN)
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/timeslots")
+    public ResponseEntity<TimeslotDTO> createTimeslot(@Valid @RequestBody TimeslotDTO timeslotDTO) {
+        Timeslot timeslot = dictionaryMapper.toTimeslot(timeslotDTO);
+        Timeslot saved = timeslotRepository.save(timeslot);
+        return ResponseEntity.ok(dictionaryMapper.toTimeslotDTO(saved));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/timeslots")
+    public ResponseEntity<List<TimeslotDTO>> listTimeslots() {
+        List<TimeslotDTO> timeslots = timeslotRepository.findAll().stream()
+                .map(dictionaryMapper::toTimeslotDTO)
+                .toList();
+        return ResponseEntity.ok(timeslots);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/timeslots/{id}")
+    public ResponseEntity<TimeslotDTO> getTimeslot(@PathVariable Long id) {
+        Optional<Timeslot> t = timeslotRepository.findById(id);
+        return t.map(timeslot -> ResponseEntity.ok(dictionaryMapper.toTimeslotDTO(timeslot)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/timeslots/{id}")
+    public ResponseEntity<TimeslotDTO> updateTimeslot(@PathVariable Long id, @Valid @RequestBody TimeslotDTO updated) {
+        return timeslotRepository.findById(id).map(t -> {
+            t.setDayOfWeek(updated.dayOfWeek());
+            t.setStartTime(updated.startTime());
+            t.setEndTime(updated.endTime());
+            timeslotRepository.save(t);
+            return ResponseEntity.ok(dictionaryMapper.toTimeslotDTO(t));
+        }).orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/timeslots/{id}")
+    public ResponseEntity<?> deleteTimeslot(@PathVariable Long id) {
+        if (timeslotRepository.existsById(id)) {
+            timeslotRepository.deleteById(id);
+            return ResponseEntity.ok().build();
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Dance Groups (ROLE_ADMIN)
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/groups")
+    public ResponseEntity<DanceGroupDTO> createGroup(@Valid @RequestBody DanceGroupDTO groupDTO) {
+        DanceGroup group = dictionaryMapper.toDanceGroup(groupDTO);
+
+        // Resolve DanceStyle
+        DanceStyle style = danceStyleRepository.findById(groupDTO.danceStyleId())
+                .orElseThrow(() -> new IllegalArgumentException("Dance Style not found with id: " + groupDTO.danceStyleId()));
+        group.setDanceStyle(style);
+
+        DanceGroup saved = danceGroupRepository.save(group);
+        return ResponseEntity.ok(dictionaryMapper.toDanceGroupDTO(saved));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/groups")
+    public ResponseEntity<List<DanceGroupDTO>> listGroups() {
+        List<DanceGroupDTO> groups = danceGroupRepository.findAll().stream()
+                .map(dictionaryMapper::toDanceGroupDTO)
+                .toList();
+        return ResponseEntity.ok(groups);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/groups/{id}")
+    public ResponseEntity<DanceGroupDTO> getGroup(@PathVariable Long id) {
+        Optional<DanceGroup> g = danceGroupRepository.findById(id);
+        return g.map(group -> ResponseEntity.ok(dictionaryMapper.toDanceGroupDTO(group)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/groups/{id}")
+    public ResponseEntity<DanceGroupDTO> updateGroup(@PathVariable Long id, @Valid @RequestBody DanceGroupDTO updated) {
+        return danceGroupRepository.findById(id).map(g -> {
+            g.setName(updated.name());
+            g.setDanceLevel(updated.danceLevel());
+            g.setMinSize(updated.minSize());
+            g.setTargetAgeRange(updated.targetAgeRange());
+
+            if (!g.getDanceStyle().getId().equals(updated.danceStyleId())) {
+                DanceStyle style = danceStyleRepository.findById(updated.danceStyleId())
+                        .orElseThrow(() -> new IllegalArgumentException("Dance Style not found with id: " + updated.danceStyleId()));
+                g.setDanceStyle(style);
+            }
+
+            danceGroupRepository.save(g);
+            return ResponseEntity.ok(dictionaryMapper.toDanceGroupDTO(g));
+        }).orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/groups/{id}")
+    public ResponseEntity<?> deleteGroup(@PathVariable Long id) {
+        if (danceGroupRepository.existsById(id)) {
+            danceGroupRepository.deleteById(id);
             return ResponseEntity.ok().build();
         }
         return ResponseEntity.notFound().build();

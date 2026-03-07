@@ -2,7 +2,9 @@ package com.timetable.backend.service;
 
 import com.timetable.backend.domain.dto.CreateTeacherRequest;
 import com.timetable.backend.domain.dto.TeacherResponse;
+import com.timetable.backend.domain.dto.UpdateTeacherRequest;
 import com.timetable.backend.domain.mapper.TeacherMapper;
+import com.timetable.backend.domain.model.AbstractUser;
 import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Role;
 import com.timetable.backend.domain.model.Teacher;
@@ -11,7 +13,6 @@ import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,50 +28,112 @@ public class TeacherService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final DanceStyleRepository danceStyleRepository;
-    private final PasswordEncoder passwordEncoder;
     private final TeacherMapper teacherMapper;
 
-    /**
-     * Creates a new Teacher entity based on the provided request.
-     * <p>
-     * This method performs the following steps:
-     * <ul>
-     *     <li>Validates that the email is not already in use.</li>
-     *     <li>Retrieves or creates the "TEACHER" role.</li>
-     *     <li>Maps the request DTO to a Teacher entity.</li>
-     *     <li>Encodes the password.</li>
-     *     <li>Validates and associates the teacher with the specified dance styles.</li>
-     * </ul>
-     *
-     * @param request the DTO containing teacher details (email, password, name, styles).
-     * @return the created TeacherResponse DTO.
-     * @throws IllegalArgumentException if a user with the given email already exists or if any dance style ID is invalid.
-     */
+    @Transactional(readOnly = true)
+    public List<TeacherResponse> getAllTeachers() {
+        return teacherRepository.findAll().stream()
+                .map(teacherMapper::toTeacherResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public TeacherResponse getTeacherById(Long id) {
+        Teacher teacher = teacherRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found with id: " + id));
+        return teacherMapper.toTeacherResponse(teacher);
+    }
+
     @Transactional
-    public TeacherResponse createTeacher(CreateTeacherRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
-            throw new IllegalArgumentException("Email already in use");
+    public TeacherResponse updateTeacher(Long id, UpdateTeacherRequest request) {
+        Teacher teacher = teacherRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found with id: " + id));
+
+        // fullName lives in the AbstractUser record — update it there
+        if (request.fullName() != null && teacher.getUser() != null) {
+            teacher.getUser().setFullName(request.fullName());
+            userRepository.save(teacher.getUser());
         }
 
-        Role teacherRole = roleRepository.findByName("TEACHER")
-                .orElseGet(() -> roleRepository.save(new Role(null, "TEACHER")));
+        teacher.setMaxDailyHours(request.maxDailyHours());
+        teacher.setColorCode(request.colorCode());
 
-        Teacher teacher = teacherMapper.toTeacher(request);
-        teacher.setPasswordHash(passwordEncoder.encode(request.password()));
-        teacher.setRole(teacherRole);
-
-        if (request.qualifiedStyleIds() != null && !request.qualifiedStyleIds().isEmpty()) {
-            // Use a Set to ensure unique IDs from the request
+        if (request.qualifiedStyleIds() != null) {
             Set<Long> requestedStyleIds = new HashSet<>(request.qualifiedStyleIds());
             List<DanceStyle> styles = danceStyleRepository.findAllById(requestedStyleIds);
-
             if (styles.size() != requestedStyleIds.size()) {
                 throw new IllegalArgumentException("One or more DanceStyle IDs not found");
             }
             teacher.setDanceStyles(new HashSet<>(styles));
         }
 
-        Teacher saved = teacherRepository.save(teacher);
-        return teacherMapper.toTeacherResponse(saved);
+        return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
+    }
+
+    @Transactional
+    public void deleteTeacher(Long id) {
+        if (!teacherRepository.existsById(id)) {
+            throw new IllegalArgumentException("Teacher not found with id: " + id);
+        }
+        teacherRepository.deleteById(id);
+    }
+
+    /**
+     * Promotes an existing user to a Teacher.
+     * <p>
+     * Since {@link Teacher} is now a standalone entity (not extending {@link AbstractUser}),
+     * promotion works as follows:
+     * <ol>
+     *   <li>Load the existing {@link AbstractUser} by {@code userId}.</li>
+     *   <li>Ensure the user is not already promoted (no Teacher record with the same id).</li>
+     *   <li>Update the user's role to {@code TEACHER} in the {@code users} table.</li>
+     *   <li>Create a new {@link Teacher} row with {@code id = userId} and the provided settings.</li>
+     * </ol>
+     *
+     * @param request DTO with userId, maxDailyHours, colorCode, qualifiedStyleIds.
+     * @return the created {@link TeacherResponse}.
+     * @throws IllegalArgumentException if the user is not found, is already a Teacher,
+     *                                  or any dance style ID is invalid.
+     */
+    @Transactional
+    public TeacherResponse createTeacher(CreateTeacherRequest request) {
+        // 1. Verify the source user exists
+        AbstractUser user = userRepository.findById(request.userId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "User not found with id: " + request.userId()));
+
+        // 2. Guard: prevent double-promotion
+        if (teacherRepository.existsById(request.userId())) {
+            throw new IllegalArgumentException(
+                    "User with id " + request.userId() + " is already a Teacher");
+        }
+
+        // 3. Resolve (or create) the TEACHER role and update the user's role
+        Role teacherRole = roleRepository.findByName("TEACHER")
+                .orElseGet(() -> roleRepository.save(new Role(null, "TEACHER")));
+        user.setRole(teacherRole);
+        // Use the returned managed instance to avoid a detached-entity conflict on merge
+        AbstractUser managedUser = userRepository.saveAndFlush(user);
+
+        // 4. Build the Teacher record — do NOT call setId() manually when using @MapsId,
+        //    Hibernate derives the PK from the associated user automatically.
+        Teacher teacher = new Teacher();
+        teacher.setUser(managedUser);
+        teacher.setMaxDailyHours(
+                request.maxDailyHours() != null ? request.maxDailyHours() : 8);
+        teacher.setColorCode(
+                request.colorCode() != null ? request.colorCode() : "#000000");
+
+        // 5. Resolve and assign dance styles
+        if (request.qualifiedStyleIds() != null && !request.qualifiedStyleIds().isEmpty()) {
+            Set<Long> requestedStyleIds = new HashSet<>(request.qualifiedStyleIds());
+            List<DanceStyle> styles = danceStyleRepository.findAllById(requestedStyleIds);
+            if (styles.size() != requestedStyleIds.size()) {
+                throw new IllegalArgumentException("One or more DanceStyle IDs not found");
+            }
+            teacher.setDanceStyles(new HashSet<>(styles));
+        }
+
+        return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
     }
 }

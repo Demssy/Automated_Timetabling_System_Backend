@@ -1,0 +1,53 @@
+package com.timetable.backend.controller;
+
+import com.timetable.backend.domain.dto.ScheduleMetadataDTO;
+import com.timetable.backend.service.ScheduleMetadataService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/schedules")
+@RequiredArgsConstructor
+public class ScheduleMetadataController {
+
+    private final ScheduleMetadataService service;
+
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<ScheduleMetadataDTO>> getAll() {
+        return ResponseEntity.ok(service.getAll());
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ScheduleMetadataDTO> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(service.getById(id));
+    }
+
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ScheduleMetadataDTO> create(@RequestBody @Valid ScheduleMetadataDTO dto) {
+        return ResponseEntity.ok(service.create(dto));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ScheduleMetadataDTO> update(
+            @PathVariable Long id,
+            @RequestBody @Valid ScheduleMetadataDTO dto) {
+        return ResponseEntity.ok(service.update(id, dto));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+

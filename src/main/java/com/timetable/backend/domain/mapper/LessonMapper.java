@@ -20,7 +20,7 @@ public interface LessonMapper {
      * @return scheduled lesson DTO with all assignments
      */
     @Mapping(source = "id", target = "lessonId")
-    @Mapping(source = "teacher.fullName", target = "teacherName", defaultValue = "N/A")
+    @Mapping(source = "teacher.user.fullName", target = "teacherName", defaultValue = "N/A")
     @Mapping(source = "danceGroup.name", target = "groupName", defaultValue = "N/A")
     @Mapping(source = "timeslot.dayOfWeek", target = "dayOfWeek")
     @Mapping(source = "timeslot.startTime", target = "startTime")
