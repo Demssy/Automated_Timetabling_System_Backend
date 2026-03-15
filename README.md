@@ -46,15 +46,20 @@ src/
 │   ├── java/com/timetable/backend/
 │   │   ├── BackendApplication.java  # Main Spring Boot Application
 │   │   ├── config/                  # Spring Configuration (SecurityConfig)
-│   │   ├── controller/              # REST Controllers (5 controllers)
+│   │   ├── controller/              # REST Controllers (10 controllers)
+│   │   │   ├── AdminController.java
 │   │   │   ├── AuthController.java
 │   │   │   ├── DictionaryController.java
+│   │   │   ├── LessonController.java
+│   │   │   ├── ResourceUnavailabilityController.java
+│   │   │   ├── ScheduleMetadataController.java
 │   │   │   ├── SolverController.java
+│   │   │   ├── StudentController.java
 │   │   │   ├── TeacherController.java
 │   │   │   └── UserController.java
 │   │   ├── domain/
-│   │   │   ├── dto/                 # Data Transfer Objects (16 DTOs)
-│   │   │   ├── mapper/              # MapStruct Mappers (4 mappers)
+│   │   │   ├── dto/                 # Data Transfer Objects (23 DTOs)
+│   │   │   ├── mapper/              # MapStruct Mappers (6 mappers)
 │   │   │   ├── model/               # JPA Entities (14 entities)
 │   │   │   │   ├── AbstractUser.java (JOINED inheritance)
 │   │   │   │   ├── Student.java, Teacher.java, Admin.java
@@ -64,15 +69,23 @@ src/
 │   │   │   │   ├── ResourceUnavailability.java
 │   │   │   │   ├── ScheduleMetadata.java
 │   │   │   │   └── Role.java, DanceLevel.java, ScheduleStatus.java
-│   │   │   └── repository/          # Spring Data JPA Repositories (10 repos)
+│   │   │   └── repository/          # Spring Data JPA Repositories (11 repos)
 │   │   ├── security/                # JWT + Spring Security
 │   │   │   ├── JwtService.java
 │   │   │   ├── JwtAuthenticationFilter.java
 │   │   │   └── JpaUserDetailsService.java
-│   │   ├── service/                 # Business Logic (4 services)
+│   │   ├── service/                 # Business Logic (12 services)
 │   │   │   ├── AuthService.java
+│   │   │   ├── DanceGroupService.java
+│   │   │   ├── DanceStyleService.java
+│   │   │   ├── LessonService.java
+│   │   │   ├── ResourceUnavailabilityService.java
+│   │   │   ├── RoomService.java
+│   │   │   ├── ScheduleMetadataService.java
 │   │   │   ├── SolverService.java
+│   │   │   ├── StudentService.java
 │   │   │   ├── TeacherService.java
+│   │   │   ├── TimeslotService.java
 │   │   │   └── UserService.java
 │   │   └── solver/                  # Timefold Solver
 │   │       ├── DanceSchedule.java (@PlanningSolution)
@@ -80,19 +93,20 @@ src/
 │   └── resources/
 │       ├── application.properties   # Main config
 │       ├── application-test.properties
-│       └── db/migration/            # Flyway SQL Migrations (V1-V6)
+│       └── db/migration/            # Flyway SQL Migrations (V1-V7)
 │           ├── V1__init.sql         # User tables (JOINED inheritance)
 │           ├── V2__dictionaries.sql # Dance styles, Rooms
 │           ├── V3__solver_entities.sql # Timeslots, Groups, Lessons
 │           ├── V4__create_schedules_table.sql
 │           ├── V5__add_version_for_optimistic_locking.sql
-│           └── V6__insert_default_roles.sql
-└── test/                            # Comprehensive Test Suite (18+ tests)
+│           ├── V6__insert_default_roles.sql
+│           └── V7__insert_default_dance_styles.sql
+└── test/                            # Comprehensive Test Suite (19 tests)
     ├── controller/                  # Controller Tests (6 tests)
     ├── service/                     # Service Tests (3 tests)
-    ├── security/                    # Security Tests (3 tests)
+    ├── security/                    # Security Tests (2 tests)
     ├── solver/                      # Solver Tests (2 tests)
-    ├── repository/                  # Repository Tests (2 tests)
+    ├── repository/                  # Repository Tests (3 tests)
     └── domain/mapper/               # Mapper Tests (2 tests)
 ```
 
@@ -104,7 +118,6 @@ This README serves as the main documentation for the project.
 
 ### Additional Resources:
 - 🔧 [Copilot Instructions](/.github/copilot-instructions.md) - Backend coding guidelines
-- 🌐 [Global Instructions](/global-copilot-instructions) - System architecture overview
 - 📖 [Timefold Solver Docs](https://docs.timefold.ai/) - Official Timefold documentation
 - 🍃 [Spring Boot Docs](https://docs.spring.io/spring-boot/docs/current/reference/html/)
 - 🗺️ [MapStruct Docs](https://mapstruct.org/documentation/stable/reference/html/)
@@ -134,23 +147,29 @@ This README serves as the main documentation for the project.
   - JpaUserDetailsService for user loading
 - ✅ **Password Security**
   - Argon2 password hashing (BouncyCastle 1.78)
-- ✅ **Flyway Migrations** (V1-V6)
+- ✅ **Flyway Migrations** (V1-V7)
   - V1: User tables with JOINED inheritance
   - V2: Dictionaries (dance_styles, rooms, teacher_dance_style)
   - V3: Solver entities (timeslots, dance_groups, lessons, resource_unavailability)
   - V4: Schedule metadata table
   - V5: Optimistic locking (@Version)
   - V6: Default roles insertion
-- ✅ **REST API Controllers** (5 controllers)
+  - V7: Default dance styles insertion
+- ✅ **REST API Controllers** (10 controllers)
   - AuthController (register, login, logout)
-  - DictionaryController (rooms, dance styles CRUD)
+  - AdminController (full admin panel - users, teachers, rooms, styles, timeslots, groups, lessons, solver)
+  - DictionaryController (rooms, dance styles, timeslots, groups CRUD)
+  - LessonController (lesson CRUD)
+  - ResourceUnavailabilityController (teacher unavailability CRUD)
+  - ScheduleMetadataController (schedule metadata CRUD)
+  - StudentController (student management)
   - TeacherController (teacher management)
-  - UserController (user profile management)
+  - UserController (user profile)
   - SolverController (optimization endpoints)
-- ✅ **MapStruct Mappers** (4 mappers)
-  - DictionaryMapper, TeacherMapper, StudentMapper, LessonMapper
-- ✅ **Spring Data JPA Repositories** (10 repositories)
-- ✅ **Comprehensive Testing** (18+ test classes)
+- ✅ **MapStruct Mappers** (6 mappers)
+  - DictionaryMapper, TeacherMapper, StudentMapper, LessonMapper, ResourceUnavailabilityMapper, ScheduleMetadataMapper
+- ✅ **Spring Data JPA Repositories** (11 repositories)
+- ✅ **Comprehensive Testing** (19 test classes)
 
 #### EPIC 3: Solver MVP & Constraint Engine ✅ COMPLETED
 - ✅ **[BE-10] Timefold Solver Configuration**
@@ -176,7 +195,7 @@ This README serves as the main documentation for the project.
   - DanceScheduleConstraintProviderTest
   - SolverLoadIntegrationTest
 - ✅ **[BE-14] SolverController + REST API**
-  - POST /api/solver/solve/{scheduleId}
+  - POST /api/solver/solve
   - GET /api/solver/status/{scheduleId}
   - POST /api/solver/terminate/{scheduleId}
   - GET /api/solver/solution/{scheduleId}
@@ -196,6 +215,30 @@ All core features for automatic timetable generation are implemented and tested.
 
 ### Installation and Running:
 
+**Linux / macOS (bash):**
+```bash
+# 1. Clone the repository
+git clone <repository-url>
+cd Automated_Timetabling_System_Backend
+
+# 2. Set up MySQL database
+mysql -u root -p
+# In MySQL console:
+# CREATE DATABASE timetable_db;
+# EXIT;
+
+# 3. (Optional) Configure environment variables
+export MYSQL_IP=localhost
+export JWT_SECRET=your_secret_key_here
+
+# 4. Build the project
+./mvnw clean install
+
+# 5. Run the application
+./mvnw spring-boot:run
+```
+
+**Windows (PowerShell):**
 ```powershell
 # 1. Clone the repository
 git clone <repository-url>
@@ -208,7 +251,6 @@ mysql -u root -p
 # EXIT;
 
 # 3. (Optional) Configure environment variables
-# For PowerShell:
 $env:MYSQL_IP="localhost"
 $env:JWT_SECRET="your_secret_key_here"
 
@@ -231,47 +273,155 @@ The application uses the following default configurations (see `application.prop
 
 ---
 
+## 🐳 Docker
+
+A `Dockerfile` is provided for running a MySQL 8 database container:
+
+```bash
+# Build and run the database container
+docker build -t timetable-db .
+docker run -d \
+  --name timetable-db \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=timetable_db \
+  -p 3306:3306 \
+  timetable-db
+```
+
+Then start the application pointing at the container:
+
+```bash
+export MYSQL_IP=localhost
+./mvnw spring-boot:run
+```
+
+---
+
 ## 🔌 API Endpoints
 
 ### Authentication (`/api/auth`)
-- `POST /api/auth/register` - Register new student
-  - Body: `{ "email", "password", "fullName", "birthDate" }`
-  - Returns: User object + Sets JWT cookie
-- `POST /api/auth/login` - Login
-  - Body: `{ "email", "password" }`
-  - Returns: User object + Sets JWT cookie
-- `POST /api/auth/logout` - Logout (clears JWT cookie)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/auth/register` | Public | Register new student. Body: `{ "email", "password", "fullName", "birthDate" }`. Returns user object + sets JWT cookie |
+| `POST` | `/api/auth/login` | Public | Login. Body: `{ "email", "password" }`. Returns user object + sets JWT cookie |
+| `GET` | `/api/auth/logout` | Public | Logout (clears JWT cookie) |
+
+### Current User (`/api/user`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/user/me` | Any authenticated | Get current user profile |
+
+### Admin Panel (`/api/admin`) - ADMIN only
+> A unified controller providing all administrative operations.
+
+**User Management:**
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/admin/users` | List all users |
+| `GET` | `/api/admin/users/search?email=&limit=` | Search users by email |
+| `GET` | `/api/admin/users/{id}` | Get user by ID |
+| `PUT` | `/api/admin/users/{id}` | Update user |
+| `DELETE` | `/api/admin/users/{id}` | Delete user |
+
+**Teacher Management:**
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/admin/teachers` | List all teachers |
+| `GET` | `/api/admin/teachers/{id}` | Get teacher by ID |
+| `POST` | `/api/admin/teachers` | Create teacher |
+| `PUT` | `/api/admin/teachers/{id}` | Update teacher |
+| `DELETE` | `/api/admin/teachers/{id}` | Delete teacher |
+
+**Resource Management (Rooms, Styles, Timeslots, Groups):**
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET/POST` | `/api/admin/rooms` | List / create rooms |
+| `GET/PUT/DELETE` | `/api/admin/rooms/{id}` | Get / update / delete room |
+| `GET/POST` | `/api/admin/styles` | List / create dance styles |
+| `GET/PUT/DELETE` | `/api/admin/styles/{id}` | Get / update / delete dance style |
+| `GET/POST` | `/api/admin/timeslots` | List / create timeslots |
+| `GET/PUT/DELETE` | `/api/admin/timeslots/{id}` | Get / update / delete timeslot |
+| `GET/POST` | `/api/admin/groups` | List / create dance groups |
+| `GET/PUT/DELETE` | `/api/admin/groups/{id}` | Get / update / delete dance group |
+
+**Lesson Management:**
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET/POST` | `/api/admin/lessons` | List / create lessons |
+| `GET/PUT/DELETE` | `/api/admin/lessons/{id}` | Get / update / delete lesson |
+
+**Solver Operations:**
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/admin/solver/solve/{scheduleId}` | Start optimization for a schedule |
+| `GET` | `/api/admin/solver/status/{scheduleId}` | Get solver status |
+| `POST` | `/api/admin/solver/stop/{scheduleId}` | Stop solver |
+| `GET` | `/api/admin/solver/solution/{scheduleId}` | Get optimized solution |
 
 ### Dictionaries (`/api/dictionaries`) - ADMIN only
-- `GET /api/dictionaries/rooms` - List all rooms
-- `POST /api/dictionaries/rooms` - Create new room
-- `GET /api/dictionaries/rooms/{id}` - Get room by ID
-- `PUT /api/dictionaries/rooms/{id}` - Update room
-- `DELETE /api/dictionaries/rooms/{id}` - Delete room
-- `GET /api/dictionaries/styles` - List all dance styles
-- `POST /api/dictionaries/styles` - Create new dance style
-- `GET /api/dictionaries/styles/{id}` - Get dance style by ID
-- `PUT /api/dictionaries/styles/{id}` - Update dance style
-- `DELETE /api/dictionaries/styles/{id}` - Delete dance style
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET/POST` | `/api/dictionaries/rooms` | List / create rooms |
+| `GET/PUT/DELETE` | `/api/dictionaries/rooms/{id}` | Get / update / delete room |
+| `GET/POST` | `/api/dictionaries/styles` | List / create dance styles |
+| `GET/PUT/DELETE` | `/api/dictionaries/styles/{id}` | Get / update / delete dance style |
+| `GET/POST` | `/api/dictionaries/timeslots` | List / create timeslots |
+| `GET/PUT/DELETE` | `/api/dictionaries/timeslots/{id}` | Get / update / delete timeslot |
+| `GET/POST` | `/api/dictionaries/groups` | List / create dance groups |
+| `GET/PUT/DELETE` | `/api/dictionaries/groups/{id}` | Get / update / delete dance group |
 
 ### Teachers (`/api/teachers`) - ADMIN only
-- `POST /api/teachers` - Create new teacher
-- `GET /api/teachers/{id}` - Get teacher details
-- `PUT /api/teachers/{id}` - Update teacher
-- `DELETE /api/teachers/{id}` - Delete teacher
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/teachers` | List all teachers |
+| `GET` | `/api/teachers/{id}` | Get teacher by ID |
+| `POST` | `/api/teachers` | Create teacher |
+| `PUT` | `/api/teachers/{id}` | Update teacher |
+| `DELETE` | `/api/teachers/{id}` | Delete teacher |
 
-### Users (`/api/users`)
-- `GET /api/users/me` - Get current user profile
-- `PUT /api/users/me` - Update current user profile
+### Students (`/api/students`) - ADMIN only
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/students` | List all students |
+| `GET` | `/api/students/{id}` | Get student by ID |
+| `POST` | `/api/students` | Create student |
+| `PUT` | `/api/students/{id}` | Update student |
+| `DELETE` | `/api/students/{id}` | Delete student |
 
-### Solver (`/api/solver`)
-- `POST /api/solver/solve/{scheduleId}` - Start schedule optimization
-  - Starts asynchronous solving process
-- `GET /api/solver/status/{scheduleId}` - Get solver status
-  - Returns: `{ "solverStatus": "NOT_SOLVING" | "SOLVING_ACTIVE" | "SOLVING_SCHEDULED" }`
-- `POST /api/solver/terminate/{scheduleId}` - Stop solving process
-- `GET /api/solver/solution/{scheduleId}` - Get optimized solution
-  - Returns: Complete schedule with assigned timeslots and rooms + score
+### Lessons (`/api/lessons`) - ADMIN only
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/lessons` | List all lessons |
+| `GET` | `/api/lessons/{id}` | Get lesson by ID |
+| `POST` | `/api/lessons` | Create lesson |
+| `PUT` | `/api/lessons/{id}` | Update lesson |
+| `DELETE` | `/api/lessons/{id}` | Delete lesson |
+
+### Resource Unavailability (`/api/unavailability`) - ADMIN only
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/unavailability` | List all unavailability records |
+| `GET` | `/api/unavailability/{id}` | Get record by ID |
+| `POST` | `/api/unavailability` | Create record |
+| `PUT` | `/api/unavailability/{id}` | Update record |
+| `DELETE` | `/api/unavailability/{id}` | Delete record |
+
+### Schedules (`/api/schedules`) - ADMIN only
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/schedules` | List all schedules |
+| `GET` | `/api/schedules/{id}` | Get schedule by ID |
+| `POST` | `/api/schedules` | Create schedule |
+| `PUT` | `/api/schedules/{id}` | Update schedule |
+| `DELETE` | `/api/schedules/{id}` | Delete schedule |
+
+### Solver (`/api/solver`) - ADMIN only
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/solver/solve` | Start schedule optimization (asynchronous) |
+| `GET` | `/api/solver/status/{scheduleId}` | Get solver status. Returns: `{ "solverStatus": "NOT_SOLVING" \| "SOLVING_ACTIVE" \| "SOLVING_SCHEDULED" }` |
+| `POST` | `/api/solver/terminate/{scheduleId}` | Stop solving process |
+| `GET` | `/api/solver/solution/{scheduleId}` | Get optimized solution with assigned timeslots, rooms and score |
 
 📖 **API Authentication:** All endpoints (except `/api/auth/register` and `/api/auth/login`) require JWT authentication via HTTP-only cookie.
 
@@ -279,26 +429,37 @@ The application uses the following default configurations (see `application.prop
 
 ## 🧪 Testing
 
+**Linux / macOS:**
+```bash
+# Run all tests
+./mvnw test
+
+# Run specific test class
+./mvnw test -Dtest=DanceScheduleConstraintProviderTest
+
+# Run with coverage report (if jacoco is configured)
+./mvnw test jacoco:report
+```
+
+**Windows:**
 ```powershell
 # Run all tests
 .\mvnw.cmd test
 
 # Run specific test class
 .\mvnw.cmd test -Dtest=DanceScheduleConstraintProviderTest
-
-# Run with coverage report (if jacoco is configured)
-.\mvnw.cmd test jacoco:report
 ```
 
 **Current test coverage:** High (all main components covered)
 
-### Test Suite (18+ test classes):
+### Test Suite (19 test classes):
 - **Controller Tests (6):** AuthController, DictionaryController, SolverController, TeacherController, UserController (2)
 - **Service Tests (3):** AuthService, TeacherService, UserService
-- **Security Tests (3):** JwtService, JwtAuthenticationFilter, UserRepository
+- **Security Tests (2):** JwtService, JwtAuthenticationFilter
 - **Solver Tests (2):** DanceScheduleConstraintProvider, SolverLoadIntegration
-- **Repository Tests (2):** DanceStyleRepository, RoomRepository
+- **Repository Tests (3):** DanceStyleRepository, RoomRepository, UserRepository
 - **Mapper Tests (2):** DictionaryMapper, TeacherMapper
+- **Integration Test (1):** BackendApplicationTests
 
 ---
 
@@ -311,11 +472,12 @@ The application uses the following default configurations (see `application.prop
 - **V4__create_schedules_table.sql** - Schedule metadata table
 - **V5__add_version_for_optimistic_locking.sql** - Optimistic locking support
 - **V6__insert_default_roles.sql** - Default roles (STUDENT, TEACHER, ADMIN)
+- **V7__insert_default_dance_styles.sql** - Default dance styles (Ballet, Latin, Standard, etc.)
 
 ### Database Schema:
 - **Total tables:** 12 (users, students, teachers, admins, roles, dance_styles, rooms, timeslots, dance_groups, lessons, resource_unavailability, schedule_metadata)
 - **Inheritance Strategy:** JOINED (for User hierarchy)
-- **Optimistic Locking:** @Version annotation on all entities
+- **Optimistic Locking:** @Version annotation on entities
 
 ---
 
@@ -370,8 +532,8 @@ Controller → Service → Repository → Database
   - `ResourceUnavailability` - Teacher/room unavailability periods
   - `ScheduleMetadata` - Schedule metadata and status
 - **Enums:**
-  - `DanceLevel` (BEGINNER, ELEMENTARY, INTERMEDIATE, ADVANCED, PROFESSIONAL)
-  - `ScheduleStatus` (DRAFT, SOLVING, SOLVED, PUBLISHED)
+  - `DanceLevel` (BEGINNER, ELEMENTARY, PRE_INTERMEDIATE, INTERMEDIATE, ADVANCED)
+  - `ScheduleStatus` (DRAFT, PUBLISHED, ARCHIVED)
 
 #### 2. Security Layer
 - **JwtService** - JWT token generation and validation (HS256)
@@ -387,8 +549,8 @@ Controller → Service → Repository → Database
 - **SolverController** - REST API for solver operations
 
 #### 4. Data Transfer Layer
-- **16 DTOs** - Clean separation between API and domain models
-- **4 MapStruct Mappers** - Automatic DTO ↔ Entity conversion
+- **23 DTOs** - Clean separation between API and domain models
+- **6 MapStruct Mappers** - Automatic DTO ↔ Entity conversion
 - **Validation** - Jakarta Validation API with Hibernate Validator
 
 ### Key Principles:
@@ -396,7 +558,7 @@ Controller → Service → Repository → Database
 - **Constructor Injection** - Via @RequiredArgsConstructor (no @Autowired)
 - **Stateless API** - JWT without sessions
 - **RBAC** - Role-Based Access Control via @PreAuthorize
-- **Optimistic Locking** - @Version on all entities to prevent concurrent updates
+- **Optimistic Locking** - @Version on entities to prevent concurrent updates
 - **Clean Code** - Lombok annotations reduce boilerplate
 
 ---
@@ -433,7 +595,7 @@ This project is under active development. Contribution guidelines will be added 
 **Project:** Automated Timetabling System Backend  
 **Version:** 0.0.1-SNAPSHOT  
 **Start Date:** December 31, 2025  
-**Last Updated:** January 8, 2026  
+**Last Updated:** March 15, 2026  
 
 ---
 
