@@ -33,7 +33,9 @@ public class AdminController {
     private final UserService userService;
     private final TeacherService teacherService;
     private final RoomService roomService;
+    private final DanceStyleService danceStyleService;
     private final TimeslotService timeslotService;
+    private final DanceGroupService danceGroupService;
     private final LessonService lessonService;
     private final SolverService solverService;
     private final LessonMapper lessonMapper;
@@ -167,6 +169,44 @@ public class AdminController {
     }
 
     // =========================================================================
+    // DanceStyle management  —  /api/admin/styles
+    // =========================================================================
+
+    /** Get all dance styles. */
+    @GetMapping("/styles")
+    public ResponseEntity<List<DanceStyleDTO>> getAllStyles() {
+        return ResponseEntity.ok(danceStyleService.getAllStyles());
+    }
+
+    /** Get dance style by ID. */
+    @GetMapping("/styles/{id}")
+    public ResponseEntity<DanceStyleDTO> getStyleById(@PathVariable Long id) {
+        return ResponseEntity.ok(danceStyleService.getStyleById(id));
+    }
+
+    /** Create a new dance style. */
+    @PostMapping("/styles")
+    public ResponseEntity<DanceStyleDTO> createStyle(@RequestBody @Valid DanceStyleDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(danceStyleService.createStyle(dto));
+    }
+
+    /** Update dance style details. */
+    @PutMapping("/styles/{id}")
+    public ResponseEntity<DanceStyleDTO> updateStyle(
+            @PathVariable Long id,
+            @RequestBody @Valid DanceStyleDTO dto) {
+        return ResponseEntity.ok(danceStyleService.updateStyle(id, dto));
+    }
+
+    /** Delete a dance style. */
+    @DeleteMapping("/styles/{id}")
+    public ResponseEntity<Void> deleteStyle(@PathVariable Long id) {
+        danceStyleService.deleteStyle(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // =========================================================================
     // Timeslot management  —  /api/admin/timeslots
     // =========================================================================
 
@@ -207,6 +247,44 @@ public class AdminController {
     @DeleteMapping("/timeslots/{id}")
     public ResponseEntity<Void> deleteTimeslot(@PathVariable Long id) {
         timeslotService.deleteTimeslot(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // =========================================================================
+    // DanceGroup management  —  /api/admin/groups
+    // =========================================================================
+
+    /** Get all dance groups. */
+    @GetMapping("/groups")
+    public ResponseEntity<List<DanceGroupDTO>> getAllGroups() {
+        return ResponseEntity.ok(danceGroupService.getAllGroups());
+    }
+
+    /** Get dance group by ID. */
+    @GetMapping("/groups/{id}")
+    public ResponseEntity<DanceGroupDTO> getGroupById(@PathVariable Long id) {
+        return ResponseEntity.ok(danceGroupService.getGroupById(id));
+    }
+
+    /** Create a new dance group. */
+    @PostMapping("/groups")
+    public ResponseEntity<DanceGroupDTO> createGroup(@RequestBody @Valid DanceGroupDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(danceGroupService.createGroup(dto));
+    }
+
+    /** Update dance group details. */
+    @PutMapping("/groups/{id}")
+    public ResponseEntity<DanceGroupDTO> updateGroup(
+            @PathVariable Long id,
+            @RequestBody @Valid DanceGroupDTO dto) {
+        return ResponseEntity.ok(danceGroupService.updateGroup(id, dto));
+    }
+
+    /** Delete a dance group. */
+    @DeleteMapping("/groups/{id}")
+    public ResponseEntity<Void> deleteGroup(@PathVariable Long id) {
+        danceGroupService.deleteGroup(id);
         return ResponseEntity.noContent().build();
     }
 

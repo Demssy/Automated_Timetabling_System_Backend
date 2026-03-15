@@ -1,5 +1,7 @@
 package com.timetable.backend.domain.dto;
 
+import com.timetable.backend.domain.model.DanceLevel;
+
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 
@@ -27,7 +29,8 @@ public record ScheduledLessonDTO(
     String roomName,
     int durationMinutes,
     boolean isPrivate,
-    boolean isPinned
+    boolean isPinned,
+    DanceLevel danceLevel
 ) {
 }
 

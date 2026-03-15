@@ -24,42 +24,32 @@ import java.util.List;
 @PlanningSolution
 @Getter
 @Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@RequiredArgsConstructor
 @ToString
 public class DanceSchedule {
 
     @PlanningId
-    private Long id;
+    private final Long id;
 
     @ProblemFactCollectionProperty
     @ValueRangeProvider(id = "timeslotRange")
-    private List<Timeslot> timeslotList;
+    private final List<Timeslot> timeslotList;
 
     @ProblemFactCollectionProperty
     @ValueRangeProvider(id = "roomRange")
-    private List<Room> roomList;
+    private final List<Room> roomList;
 
     @ProblemFactCollectionProperty
-    private List<Teacher> teacherList;
+    private final List<Teacher> teacherList;
 
     @ProblemFactCollectionProperty
-    private List<ResourceUnavailability> resourceUnavailabilityList;
+    private final List<ResourceUnavailability> resourceUnavailabilityList;
 
     @PlanningEntityCollectionProperty
-    private List<Lesson> lessonList;
+    private final List<Lesson> lessonList;
 
     @PlanningScore
     private HardSoftScore score;
 
-    public DanceSchedule(Long id, List<Timeslot> timeslotList, List<Room> roomList,
-                         List<Teacher> teacherList, List<ResourceUnavailability> resourceUnavailabilityList,
-                         List<Lesson> lessonList) {
-        this.id = id;
-        this.timeslotList = timeslotList;
-        this.roomList = roomList;
-        this.teacherList = teacherList;
-        this.resourceUnavailabilityList = resourceUnavailabilityList;
-        this.lessonList = lessonList;
-    }
+
 }
