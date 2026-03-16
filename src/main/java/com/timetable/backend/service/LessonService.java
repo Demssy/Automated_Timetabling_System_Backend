@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -20,6 +22,7 @@ public class LessonService {
     private final DanceGroupRepository danceGroupRepository;
     private final TimeslotRepository timeslotRepository;
     private final RoomRepository roomRepository;
+    private final ScheduleMetadataRepository scheduleMetadataRepository;
     private final LessonMapper lessonMapper;
 
     @Transactional(readOnly = true)
@@ -30,11 +33,38 @@ public class LessonService {
     }
 
     @Transactional(readOnly = true)
+    public List<ScheduledLessonDTO> getActiveScheduleLessons() {
+        LocalDate today = LocalDate.now();
+
+        boolean hasActivePublishedSchedule = scheduleMetadataRepository.findAll().stream()
+                .filter(schedule -> schedule.getStatus() == ScheduleStatus.PUBLISHED)
+                .filter(schedule -> !today.isBefore(schedule.getValidFrom()) && !today.isAfter(schedule.getValidTo()))
+                .max(Comparator.comparing(ScheduleMetadata::getCreatedAt))
+                .isPresent();
+
+        if (!hasActivePublishedSchedule) {
+            return List.of();
+        }
+
+        return lessonRepository.findAll().stream()
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(lesson -> lesson.getRoom() != null)
+                .sorted(Comparator
+                        .comparing((Lesson lesson) -> lesson.getTimeslot().getDayOfWeek())
+                        .thenComparing(lesson -> lesson.getTimeslot().getStartTime())
+                        .thenComparing(Lesson::getId))
+                .map(lessonMapper::toScheduledLessonDTO)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public ScheduledLessonDTO getLessonById(Long id) {
         Lesson lesson = lessonRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found with id: " + id));
         return lessonMapper.toScheduledLessonDTO(lesson);
     }
+
+
 
     @Transactional
     public ScheduledLessonDTO createLesson(CreateLessonRequest request) {

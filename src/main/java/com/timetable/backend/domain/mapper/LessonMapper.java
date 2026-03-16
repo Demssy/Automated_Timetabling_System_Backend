@@ -30,6 +30,7 @@ public interface LessonMapper {
     @Mapping(source = "private", target = "isPrivate")
     @Mapping(source = "pinned", target = "isPinned")
     @Mapping(source = "danceGroup.danceLevel", target = "danceLevel")
+    @Mapping(source = "timeslot.id", target = "timeslotId")
     ScheduledLessonDTO toScheduledLessonDTO(Lesson lesson);
 }
 

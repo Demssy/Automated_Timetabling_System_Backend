@@ -37,7 +37,6 @@ public class AdminController {
     private final TimeslotService timeslotService;
     private final DanceGroupService danceGroupService;
     private final LessonService lessonService;
-    private final SolverService solverService;
     private final LessonMapper lessonMapper;
 
     // =========================================================================
@@ -330,94 +329,5 @@ public class AdminController {
     public ResponseEntity<Void> deleteLesson(@PathVariable Long id) {
         lessonService.deleteLesson(id);
         return ResponseEntity.noContent().build();
-    }
-
-    // =========================================================================
-    // Solver control  —  /api/admin/solver
-    // =========================================================================
-
-    /**
-     * Start the Timefold Solver for a given schedule.
-     * Solving runs asynchronously. Use the status endpoint to poll progress.
-     *
-     * POST /api/admin/solver/solve/{scheduleId}
-     *
-     * @param scheduleId identifier of the schedule to solve
-     * @return 202 Accepted with schedule ID
-     */
-    @PostMapping("/solver/solve/{scheduleId}")
-    public ResponseEntity<SolveResponse> startSolving(@PathVariable Long scheduleId) {
-        log.info("Admin requested solver start for schedule ID: {}", scheduleId);
-        solverService.solve(scheduleId);
-        return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(SolveResponse.started(scheduleId));
-    }
-
-    /**
-     * Get current solver status for a schedule.
-     * Poll this endpoint until status is NOT_SOLVING to know when solving is complete.
-     *
-     * GET /api/admin/solver/status/{scheduleId}
-     *
-     * @param scheduleId schedule identifier
-     * @return NOT_SOLVING | SOLVING_SCHEDULED | SOLVING_ACTIVE
-     */
-    @GetMapping("/solver/status/{scheduleId}")
-    public ResponseEntity<SolverStatusResponse> getSolverStatus(@PathVariable Long scheduleId) {
-        SolverStatus status = solverService.getSolverStatus(scheduleId);
-        return ResponseEntity.ok(SolverStatusResponse.of(scheduleId, status));
-    }
-
-    /**
-     * Stop the solver early.
-     * The best solution found so far is automatically saved to the database.
-     *
-     * POST /api/admin/solver/stop/{scheduleId}
-     *
-     * @param scheduleId schedule identifier
-     * @return 200 OK if terminated, 400 if solver was not running
-     */
-    @PostMapping("/solver/stop/{scheduleId}")
-    public ResponseEntity<String> stopSolving(@PathVariable Long scheduleId) {
-        log.info("Admin requested early termination for schedule ID: {}", scheduleId);
-        boolean terminated = solverService.terminateEarly(scheduleId);
-        if (terminated) {
-            return ResponseEntity.ok("Solver termination requested for schedule " + scheduleId);
-        }
-        return ResponseEntity.badRequest()
-                .body("Solver is not running for schedule " + scheduleId);
-    }
-
-    /**
-     * Retrieve the current schedule solution from the database.
-     * Can be called at any time — during or after solving.
-     *
-     * GET /api/admin/solver/solution/{scheduleId}
-     *
-     * @param scheduleId schedule identifier
-     * @return list of lessons with assigned timeslots and rooms, plus score
-     */
-    @GetMapping("/solver/solution/{scheduleId}")
-    public ResponseEntity<ScheduleSolutionResponse> getSolution(@PathVariable Long scheduleId) {
-        log.info("Admin requested solution for schedule ID: {}", scheduleId);
-
-        DanceSchedule solution = solverService.getCurrentSolutionFromDatabase(scheduleId);
-
-        if (solution == null || solution.getLessonList().isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-        }
-
-        List<ScheduledLessonDTO> lessonDTOs = solution.getLessonList().stream()
-                .map(lessonMapper::toScheduledLessonDTO)
-                .collect(Collectors.toList());
-
-        ScheduleSolutionResponse response = ScheduleSolutionResponse.from(
-                scheduleId,
-                solution.getScore(),
-                solverService.isFullyAssigned(solution),
-                lessonDTOs
-        );
-
-        return ResponseEntity.ok(response);
     }
 }

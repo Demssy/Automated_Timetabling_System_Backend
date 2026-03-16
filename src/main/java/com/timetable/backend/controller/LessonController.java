@@ -24,6 +24,13 @@ public class LessonController {
         return ResponseEntity.ok(lessonService.getAllLessons());
     }
 
+
+    @GetMapping("/active-schedule")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<List<ScheduledLessonDTO>> getActiveScheduleLessons() {
+        return ResponseEntity.ok(lessonService.getActiveScheduleLessons());
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ScheduledLessonDTO> getLessonById(@PathVariable Long id) {
