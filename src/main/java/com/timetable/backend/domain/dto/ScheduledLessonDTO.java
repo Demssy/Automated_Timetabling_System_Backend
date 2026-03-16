@@ -30,7 +30,8 @@ public record ScheduledLessonDTO(
     int durationMinutes,
     boolean isPrivate,
     boolean isPinned,
-    DanceLevel danceLevel
+    DanceLevel danceLevel,
+    Long timeslotId
 ) {
 }
 

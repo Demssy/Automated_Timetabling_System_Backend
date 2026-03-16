@@ -145,6 +145,9 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      * @param constraintFactory the factory to create constraints
      * @return minimize gaps constraint
      */
+    /**
+     * SOFT CONSTRAINT: Minimize Teacher Gaps
+     */
     Constraint minimizeTeacherGaps(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEach(Lesson.class)
@@ -152,41 +155,36 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                         // Different lessons
                         Joiners.lessThan(Lesson::getId),
                         // Same teacher
-                        Joiners.equal(Lesson::getTeacher),
-                        // Same day of week
-                        Joiners.equal(lesson -> lesson.getTimeslot() != null ?
-                                lesson.getTimeslot().getDayOfWeek() : null)
+                        Joiners.equal(Lesson::getTeacher)
+
                 )
                 .filter((lesson1, lesson2) -> {
-                    // Only consider lessons that have timeslots assigned
+
                     if (lesson1.getTimeslot() == null || lesson2.getTimeslot() == null) {
                         return false;
                     }
 
-                    // Check if there's a gap between the lessons
+                    if (lesson1.getTimeslot().getDayOfWeek() != lesson2.getTimeslot().getDayOfWeek()) {
+                        return false;
+                    }
+
                     LocalTime end1 = lesson1.getTimeslot().getEndTime();
                     LocalTime start2 = lesson2.getTimeslot().getStartTime();
                     LocalTime end2 = lesson2.getTimeslot().getEndTime();
                     LocalTime start1 = lesson1.getTimeslot().getStartTime();
 
-                    // Gap exists if lesson1 ends before lesson2 starts (and vice versa)
-                    boolean gapExists = (end1.isBefore(start2) || end2.isBefore(start1));
-
-                    return gapExists;
+                    // 3. Gap exists if lesson1 ends before lesson2 starts (and vice versa)
+                    return (end1.isBefore(start2) || end2.isBefore(start1));
                 })
                 .penalize(HardSoftScore.ONE_SOFT, (lesson1, lesson2) -> {
-                    // Calculate gap duration in minutes
                     LocalTime end1 = lesson1.getTimeslot().getEndTime();
                     LocalTime start2 = lesson2.getTimeslot().getStartTime();
                     LocalTime end2 = lesson2.getTimeslot().getEndTime();
                     LocalTime start1 = lesson1.getTimeslot().getStartTime();
 
-                    // Calculate the actual gap (the one that exists)
                     if (end1.isBefore(start2)) {
-                        // lesson1 is before lesson2
                         return (int) Duration.between(end1, start2).toMinutes();
                     } else {
-                        // lesson2 is before lesson1
                         return (int) Duration.between(end2, start1).toMinutes();
                     }
                 })

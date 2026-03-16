@@ -13,7 +13,7 @@ import com.timetable.backend.domain.model.Room;
 import com.timetable.backend.domain.model.Teacher;
 import com.timetable.backend.domain.model.Timeslot;
 import lombok.*;
-
+import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
@@ -24,8 +24,11 @@ import java.util.List;
 @PlanningSolution
 @Getter
 @Setter
+@NoArgsConstructor(force = true) // Required by Timefold for solution cloning/proxying.
 @RequiredArgsConstructor
 @ToString
+@AllArgsConstructor
+
 public class DanceSchedule {
 
     @PlanningId

@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
  * Provides endpoints for schedule optimization and monitoring.
  */
 @RestController
-@RequestMapping("/api/solver")
+@RequestMapping("/api/admin/solver")
 @RequiredArgsConstructor
 @Slf4j
 public class SolverController {
@@ -36,20 +36,14 @@ public class SolverController {
      *
      * @return 202 Accepted with schedule ID for tracking
      */
-    @PostMapping("/solve")
+    @PostMapping("/solve/{scheduleId}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<SolveResponse> solve() {
-        log.info("Received request to start schedule optimization");
-
-        // Use current timestamp as schedule ID
-        Long scheduleId = System.currentTimeMillis();
-
+    public ResponseEntity<SolveResponse> solve(@PathVariable Long scheduleId) {
+        log.info("Received request to start schedule optimization for ID: {}", scheduleId);
         try {
             solverService.solve(scheduleId);
-
-            return ResponseEntity
-                .status(HttpStatus.ACCEPTED)
-                .body(SolveResponse.started(scheduleId));
+            return ResponseEntity.status(HttpStatus.ACCEPTED)
+                    .body(SolveResponse.started(scheduleId));
 
         } catch (Exception e) {
             log.error("Error starting solver", e);
@@ -96,7 +90,7 @@ public class SolverController {
      * @param scheduleId the schedule identifier
      * @return 200 OK if termination successful, 400 if not running
      */
-    @PostMapping("/terminate/{scheduleId}")
+    @PostMapping("/stop/{scheduleId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> terminateEarly(@PathVariable Long scheduleId) {
         log.info("Received request to terminate solver for schedule ID: {}", scheduleId);
