@@ -1,5 +1,6 @@
 package com.timetable.backend.service;
 
+import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.solver.SolverManager;
 import ai.timefold.solver.core.api.solver.SolverStatus;
 import com.timetable.backend.domain.model.*;
@@ -7,12 +8,11 @@ import com.timetable.backend.domain.repository.*;
 import com.timetable.backend.solver.DanceSchedule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ai.timefold.solver.core.api.solver.SolutionManager;
-import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.beans.factory.annotation.Autowired;
+
 import java.util.List;
 
 /**
@@ -32,7 +32,8 @@ public class SolverService {
     private final RoomRepository roomRepository;
     private final TeacherRepository teacherRepository;
     private final ResourceUnavailabilityRepository resourceUnavailabilityRepository;
-    private final SolutionManager<DanceSchedule, HardSoftScore> solutionManager;
+    private final ScheduledLessonRepository scheduledLessonRepository;
+    private final ScheduleMetadataRepository scheduleMetadataRepository;
     private final SolutionPersistenceService persistenceService;
     /**
      * Loads the problem from database and starts solving asynchronously.
@@ -161,21 +162,34 @@ public class SolverService {
 
 
     @Transactional(readOnly = true)
-    public DanceSchedule getCurrentSolutionFromDatabase(Long scheduleId) {
-        DanceSchedule schedule = loadScheduleFromDatabase(scheduleId);
-        solutionManager.update(schedule);
-        return schedule;
+    public List<ScheduledLesson> getCurrentSolutionFromDatabase(Long scheduleId) {
+        return scheduledLessonRepository.findByScheduleIdOrderByIdAsc(scheduleId);
+    }
+
+    @Transactional(readOnly = true)
+    public HardSoftScore getStoredScore(Long scheduleId) {
+        return scheduleMetadataRepository.findById(scheduleId)
+            .map(ScheduleMetadata::getSolverScore)
+            .filter(score -> score != null && !score.isBlank())
+            .map(score -> {
+                try {
+                    return HardSoftScore.parseScore(score);
+                } catch (IllegalArgumentException e) {
+                    log.warn("Cannot parse stored solver score '{}' for schedule {}", score, scheduleId);
+                    return null;
+                }
+            })
+            .orElse(null);
     }
 
     /**
      * Checks if all lessons have been assigned timeslots and rooms.
      *
-     * @param solution the DanceSchedule to check
+     * @param scheduledLessons the list of ScheduledLesson to check
      * @return true if all lessons are assigned
      */
-    public boolean isFullyAssigned(DanceSchedule solution) {
-        return solution.getLessonList().stream()
-            .allMatch(lesson -> lesson.getTimeslot() != null && lesson.getRoom() != null);
+    public boolean isFullyAssigned(List<ScheduledLesson> scheduledLessons) {
+        return scheduledLessons.stream()
+            .allMatch(lesson -> lesson.getStatus() == ScheduledLessonStatus.ASSIGNED);
     }
 }
-

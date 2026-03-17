@@ -1,10 +1,11 @@
 package com.timetable.backend.controller;
 
+import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.solver.SolverStatus;
 import com.timetable.backend.domain.dto.*;
 import com.timetable.backend.domain.mapper.LessonMapper;
+import com.timetable.backend.domain.model.ScheduledLesson;
 import com.timetable.backend.service.SolverService;
-import com.timetable.backend.solver.DanceSchedule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -13,7 +14,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * REST Controller for Timefold Solver operations.
@@ -43,7 +43,7 @@ public class SolverController {
         try {
             solverService.solve(scheduleId);
             return ResponseEntity.status(HttpStatus.ACCEPTED)
-                    .body(SolveResponse.started(scheduleId));
+                .body(SolveResponse.started(scheduleId));
 
         } catch (Exception e) {
             log.error("Error starting solver", e);
@@ -128,27 +128,21 @@ public class SolverController {
     @GetMapping("/solution/{scheduleId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ScheduleSolutionResponse> getSolution(@PathVariable Long scheduleId) {
-        log.info("Retrieving current solution from database for schedule ID: {}", scheduleId);
+        log.info("Retrieving current solution snapshot from database for schedule ID: {}", scheduleId);
 
         try {
-            DanceSchedule solution = solverService.getCurrentSolutionFromDatabase(scheduleId);
+            List<ScheduledLesson> solution = solverService.getCurrentSolutionFromDatabase(scheduleId);
 
-            if (solution == null) {
-                return ResponseEntity
-                    .status(HttpStatus.NOT_FOUND)
-                    .build();
-            }
-
-            // Map lessons to DTOs using LessonMapper
-            List<ScheduledLessonDTO> lessonDTOs = solution.getLessonList().stream()
+            List<ScheduledLessonDTO> lessonDTOs = solution.stream()
                 .map(lessonMapper::toScheduledLessonDTO)
-                .collect(Collectors.toList());
+                .toList();
 
+            HardSoftScore score = solverService.getStoredScore(scheduleId);
             boolean fullyAssigned = solverService.isFullyAssigned(solution);
 
             ScheduleSolutionResponse response = ScheduleSolutionResponse.from(
                 scheduleId,
-                solution.getScore(),
+                score,
                 fullyAssigned,
                 lessonDTOs
             );

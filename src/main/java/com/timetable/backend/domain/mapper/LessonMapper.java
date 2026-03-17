@@ -2,35 +2,32 @@ package com.timetable.backend.domain.mapper;
 
 import com.timetable.backend.domain.dto.ScheduledLessonDTO;
 import com.timetable.backend.domain.model.Lesson;
+import com.timetable.backend.domain.model.ScheduledLesson;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 /**
- * MapStruct mapper for converting Lesson entities to DTOs.
- * Handles null-safe mapping of nested properties.
+ * MapStruct mapper for converting lesson entities to DTOs.
  */
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", uses = {TeacherMapper.class, DictionaryMapper.class})
 public interface LessonMapper {
 
-    /**
-     * Maps a Lesson entity to ScheduledLessonDTO.
-     * Handles nested properties and provides default values for unassigned fields.
-     *
-     * @param lesson the lesson entity
-     * @return scheduled lesson DTO with all assignments
-     */
-    @Mapping(source = "id", target = "lessonId")
-    @Mapping(source = "teacher.user.fullName", target = "teacherName", defaultValue = "N/A")
-    @Mapping(source = "danceGroup.name", target = "groupName", defaultValue = "N/A")
-    @Mapping(source = "timeslot.dayOfWeek", target = "dayOfWeek")
-    @Mapping(source = "timeslot.startTime", target = "startTime")
-    @Mapping(source = "timeslot.endTime", target = "endTime")
-    @Mapping(source = "room.name", target = "roomName", defaultValue = "Unassigned")
-    @Mapping(source = "durationMinutes", target = "durationMinutes")
+    @Mapping(source = "id", target = "id")
+    @Mapping(source = "teacher", target = "teacher")
+    @Mapping(source = "danceGroup", target = "danceGroup")
     @Mapping(source = "private", target = "isPrivate")
     @Mapping(source = "pinned", target = "isPinned")
-    @Mapping(source = "danceGroup.danceLevel", target = "danceLevel")
-    @Mapping(source = "timeslot.id", target = "timeslotId")
+    @Mapping(source = "timeslot", target = "timeslot")
+    @Mapping(source = "room", target = "room")
     ScheduledLessonDTO toScheduledLessonDTO(Lesson lesson);
-}
 
+    @Mapping(source = "id", target = "id")
+    @Mapping(source = "lesson.teacher", target = "teacher")
+    @Mapping(source = "lesson.danceGroup", target = "danceGroup")
+    @Mapping(source = "lesson.durationMinutes", target = "durationMinutes")
+    @Mapping(source = "lesson.private", target = "isPrivate")
+    @Mapping(source = "lesson.pinned", target = "isPinned")
+    @Mapping(source = "timeslot", target = "timeslot")
+    @Mapping(source = "room", target = "room")
+    ScheduledLessonDTO toScheduledLessonDTO(ScheduledLesson lesson);
+}
