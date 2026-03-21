@@ -88,8 +88,8 @@ public class SolverService {
         List<Teacher> teachers = teacherRepository.findAll();
         List<ResourceUnavailability> resourceUnavailabilities = resourceUnavailabilityRepository.findAll();
 
-        // Load planning entities only for the selected schedule.
-        List<Lesson> lessons = lessonRepository.findByScheduleId(scheduleId);
+        // Load only active planning entities for the selected schedule.
+        List<Lesson> lessons = lessonRepository.findByIsActiveTrueAndScheduleId(scheduleId);
 
 
         log.info("Loaded {} timeslots, {} rooms, {} teachers, {} lessons",

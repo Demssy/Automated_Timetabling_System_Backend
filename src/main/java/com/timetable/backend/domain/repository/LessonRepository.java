@@ -19,5 +19,10 @@ public interface LessonRepository extends JpaRepository<Lesson, Long> {
 	 */
 	@Query("SELECT l FROM Lesson l WHERE :scheduleId IS NOT NULL")
 	List<Lesson> findByScheduleId(@Param("scheduleId") Long scheduleId);
+
+	List<Lesson> findByIsActiveTrue();
+
+	@Query("SELECT l FROM Lesson l WHERE :scheduleId IS NOT NULL AND l.isActive = true")
+	List<Lesson> findByIsActiveTrueAndScheduleId(@Param("scheduleId") Long scheduleId);
 }
 

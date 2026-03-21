@@ -17,6 +17,7 @@ public interface LessonMapper {
     @Mapping(source = "danceGroup", target = "danceGroup")
     @Mapping(source = "private", target = "isPrivate")
     @Mapping(source = "pinned", target = "isPinned")
+    @Mapping(source = "active", target = "isActive")
     @Mapping(source = "timeslot", target = "timeslot")
     @Mapping(source = "room", target = "room")
     ScheduledLessonDTO toScheduledLessonDTO(Lesson lesson);
@@ -27,6 +28,7 @@ public interface LessonMapper {
     @Mapping(source = "lesson.durationMinutes", target = "durationMinutes")
     @Mapping(source = "lesson.private", target = "isPrivate")
     @Mapping(source = "lesson.pinned", target = "isPinned")
+    @Mapping(source = "lesson.active", target = "isActive")
     @Mapping(source = "timeslot", target = "timeslot")
     @Mapping(source = "room", target = "room")
     ScheduledLessonDTO toScheduledLessonDTO(ScheduledLesson lesson);

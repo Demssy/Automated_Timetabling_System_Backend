@@ -51,6 +51,12 @@ public class LessonController {
         return ResponseEntity.ok(lessonService.updateLesson(id, request));
     }
 
+    @PutMapping("/{id}/toggle-active")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ScheduledLessonDTO> toggleLessonActive(@PathVariable Long id) {
+        return ResponseEntity.ok(lessonService.toggleLessonActive(id));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteLesson(@PathVariable Long id) {

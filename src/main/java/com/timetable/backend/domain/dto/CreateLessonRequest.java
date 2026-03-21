@@ -15,6 +15,7 @@ public record CreateLessonRequest(
     int durationMinutes,
     boolean isPrivate,
     boolean isPinned,
+    boolean isActive,
     Long timeslotId, // Optional, can be null
     Long roomId      // Optional, can be null
 ) {}

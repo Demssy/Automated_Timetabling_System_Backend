@@ -46,7 +46,7 @@ public class LessonService {
             return List.of();
         }
 
-        return lessonRepository.findAll().stream()
+        return lessonRepository.findByIsActiveTrue().stream()
                 .filter(lesson -> lesson.getTimeslot() != null)
                 .filter(lesson -> lesson.getRoom() != null)
                 .sorted(Comparator
@@ -79,6 +79,7 @@ public class LessonService {
         lesson.setDurationMinutes(request.durationMinutes());
         lesson.setPrivate(request.isPrivate());
         lesson.setPinned(request.isPinned());
+        lesson.setActive(request.isActive());
 
         if (request.timeslotId() != null) {
             Timeslot timeslot = timeslotRepository.findById(request.timeslotId())
@@ -117,6 +118,7 @@ public class LessonService {
         lesson.setDurationMinutes(request.durationMinutes());
         lesson.setPrivate(request.isPrivate());
         lesson.setPinned(request.isPinned());
+        lesson.setActive(request.isActive());
 
         if (request.timeslotId() != null) {
             Timeslot timeslot = timeslotRepository.findById(request.timeslotId())
@@ -144,6 +146,16 @@ public class LessonService {
             throw new IllegalArgumentException("Lesson not found with id: " + id);
         }
         lessonRepository.deleteById(id);
+    }
+
+    @Transactional
+    public ScheduledLessonDTO toggleLessonActive(Long id) {
+        Lesson lesson = lessonRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Lesson not found with id: " + id));
+
+        lesson.setActive(!lesson.isActive());
+        Lesson saved = lessonRepository.save(lesson);
+        return lessonMapper.toScheduledLessonDTO(saved);
     }
 }
 

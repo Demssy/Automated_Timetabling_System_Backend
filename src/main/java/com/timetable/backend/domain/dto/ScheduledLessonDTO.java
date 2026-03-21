@@ -13,6 +13,7 @@ public record ScheduledLessonDTO(
     int durationMinutes,
     @JsonProperty("isPrivate") boolean isPrivate,
     @JsonProperty("isPinned") boolean isPinned,
+    @JsonProperty("isActive") boolean isActive,
     TimeslotDTO timeslot,
     RoomDTO room
 ) {
