@@ -164,18 +164,20 @@ public class LessonService {
     /**
      * Applies Private/Group lesson type branching to the given lesson.
      * <ul>
-     *   <li>Private lesson: {@code student} is required, {@code danceGroup} is set to null.</li>
+     *   <li>Private lesson: {@code student} is optional (null = solver template), {@code danceGroup} is set to null.</li>
      *   <li>Group lesson: {@code danceGroup} is required, {@code student} is set to null.</li>
      * </ul>
      */
     private void applyLessonType(Lesson lesson, CreateLessonRequest request) {
         if (request.isPrivate()) {
-            if (request.studentId() == null) {
-                throw new IllegalArgumentException("A private lesson must have a studentId");
+            // studentId is optional: null means a "template" lesson for the solver to fill.
+            if (request.studentId() != null) {
+                Student student = studentRepository.findById(request.studentId())
+                        .orElseThrow(() -> new IllegalArgumentException("Student not found with id: " + request.studentId()));
+                lesson.setStudent(student);
+            } else {
+                lesson.setStudent(null);
             }
-            Student student = studentRepository.findById(request.studentId())
-                    .orElseThrow(() -> new IllegalArgumentException("Student not found with id: " + request.studentId()));
-            lesson.setStudent(student);
             lesson.setDanceGroup(null);
         } else {
             if (request.danceGroupId() == null) {

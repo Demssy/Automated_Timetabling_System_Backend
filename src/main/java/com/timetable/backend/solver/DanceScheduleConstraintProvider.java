@@ -18,16 +18,26 @@ import java.time.LocalTime;
  * Constraint provider for dance schedule optimization.
  * Defines hard and soft constraints for the Timefold Solver.
  *
+ * <p><b>Important:</b> Because {@code Lesson.student} is annotated with
+ * {@code @PlanningVariable(nullable = true)}, the standard {@code forEach(Lesson.class)}
+ * excludes all entities where the nullable variable is {@code null}. Since group lessons
+ * always have {@code student == null}, we use {@code forEachIncludingNullVars(Lesson.class)}
+ * in every constraint so that both group and unmatched private lessons are included.
+ * Each constraint already has its own null-safety filters.</p>
+ *
+ * <p><b>Room logic:</b> There is only one room. Room is NOT a planning variable.
+ * The solver enforces: max 4 private lessons per timeslot, and no private lessons
+ * during a group lesson timeslot.</p>
+ *
  * Hard Constraints (must be satisfied):
- * - Room conflict: Weighted Dual-Mode logic (Group=1.0, Private=0.25)
+ * - Max 4 private lessons per timeslot (single room capacity)
+ * - No private lessons during group lesson timeslots
  * - Teacher conflict: A teacher cannot teach two lessons at the same time
  * - Teacher availability: Lessons cannot be scheduled when teacher is unavailable
+ * - Student matching: subscription, availability, no double-booking
  *
- * <p><b>Null-safety note:</b> Since {@code Lesson.danceGroup} can be {@code null}
- * for private lessons, all constraints that would access {@code lesson.getDanceGroup()}
- * must guard with {@code .filter(lesson -> lesson.getDanceGroup() != null)}.
- * Currently no constraint accesses {@code danceGroup} directly, so the solver
- * is already null-safe with respect to this field.</p>
+ * Soft Constraints (optimized):
+ * - Reward student assignment (matchmaking incentive)
  * - Minimize gaps: Minimize time gaps between lessons for the same teacher on the same day
  * - Prime time reward: Encourage scheduling lessons during peak hours (16:00-21:00)
  * - Load balancing: Distribute lessons fairly among teachers
@@ -37,15 +47,26 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     @Override
     public Constraint[] defineConstraints(ConstraintFactory constraintFactory) {
         return new Constraint[] {
-                // Hard constraints
-                roomConflict(constraintFactory),
+                // Hard constraints — single-room capacity
+                maxFourPrivateLessonsPerTimeslot(constraintFactory),
+                noPrivateDuringGroupLesson(constraintFactory),
+
+                // Hard constraints — teacher
                 teacherConflict(constraintFactory),
 
-                // NEW: Updated availability constraints
+                // Teacher availability constraints
                 teacherOutsideWeeklyAvailability(constraintFactory),
                 teacherOneTimeUnavailability(constraintFactory),
 
+                // Student matching constraints
+                groupLessonCannotHaveStudent(constraintFactory),
+                studentMustBeSubscribedToTeacher(constraintFactory),
+                studentConflict(constraintFactory),
+                studentOutsideWeeklyAvailability(constraintFactory),
+                studentOneTimeUnavailability(constraintFactory),
+
                 // Soft constraints
+                rewardStudentAssignment(constraintFactory),
                 minimizeTeacherGaps(constraintFactory),
                 rewardPrimeTime(constraintFactory),
                 balanceTeacherLoad(constraintFactory)
@@ -53,48 +74,45 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     }
 
     /**
-     * HARD CONSTRAINT 1: Room Conflict (Weighted Dual-Mode Logic)
+     * HARD CONSTRAINT: Max 4 Private Lessons Per Timeslot
      *
-     * Implements EPIC 4 BE-15.2 specification:
-     * - Group lesson occupies 100% of room capacity (weight = 1.0)
-     * - Private lesson occupies 25% of room capacity (weight = 0.25)
-     *
-     * The constraint penalizes when total weight exceeds 1.0 in a room/timeslot.
-     * Examples:
-     * - 1 Group lesson = 1.0 (OK, fills room)
-     * - 2 Group lessons = 2.0 (CONFLICT)
-     * - 1 Group + 1 Private = 1.25 (CONFLICT)
-     * - 4 Private lessons = 1.0 (OK, within capacity)
-     * - 5 Private lessons = 1.25 (CONFLICT)
+     * Since there is only one room, at most 4 private lessons can happen simultaneously.
+     * Group by timeslot → count private lessons → penalize when count exceeds 4.
      *
      * @param constraintFactory the factory to create constraints
-     * @return room conflict constraint
+     * @return max private lessons per timeslot constraint
      */
-    Constraint roomConflict(ConstraintFactory constraintFactory) {
+    Constraint maxFourPrivateLessonsPerTimeslot(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
-                .filter(lesson -> lesson.getRoom() != null && lesson.getTimeslot() != null)
-                .groupBy(Lesson::getRoom, Lesson::getTimeslot,
-                         ConstraintCollectors.sum(this::getRoomOccupancyWeight))
-                .filter((room, timeslot, totalWeight) -> totalWeight > 100) // 100 = 100%
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate() && lesson.getTimeslot() != null)
+                .groupBy(Lesson::getTimeslot, ConstraintCollectors.count())
+                .filter((timeslot, count) -> count > 4)
                 .penalize(HardSoftScore.ONE_HARD,
-                         (room, timeslot, totalWeight) -> totalWeight - 100) // Penalize excess
-                .asConstraint("Room conflict (Dual-Mode weighted)");
+                         (timeslot, count) -> count - 4)
+                .asConstraint("Max 4 private lessons per timeslot");
     }
 
     /**
-     * Helper method to calculate room occupancy weight for a lesson.
-     * - Group lesson (isPrivate=false): 100 (represents 100% capacity)
-     * - Private lesson (isPrivate=true): 25 (represents 25% capacity)
+     * HARD CONSTRAINT: No Private Lessons During Group Lesson
      *
-     * This allows up to 4 private lessons in the same room/timeslot,
-     * but prevents mixing group with any other lesson.
+     * A group lesson occupies the entire room. No private lesson may be scheduled
+     * in the same timeslot as any group lesson.
      *
-     * @param lesson the lesson to evaluate
-     * @return occupancy weight (100 for group, 25 for private)
+     * @param constraintFactory the factory to create constraints
+     * @return no private during group constraint
      */
-    private int getRoomOccupancyWeight(Lesson lesson) {
-        return lesson.isPrivate() ? 25 : 100;
+    Constraint noPrivateDuringGroupLesson(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate() && lesson.getTimeslot() != null)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
+                        Joiners.equal(Lesson::getTimeslot),
+                        Joiners.filtering((privateLsn, groupLsn) ->
+                                !groupLsn.isPrivate() && groupLsn.getTimeslot() != null)
+                )
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("No private lessons during group lesson");
     }
 
     /**
@@ -107,8 +125,8 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint teacherConflict(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
-                .join(Lesson.class,
+                .forEachIncludingNullVars(Lesson.class)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
                         // Different lessons
                         Joiners.lessThan(Lesson::getId),
                         // Same teacher
@@ -126,12 +144,12 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint teacherOutsideWeeklyAvailability(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
+                .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.getTimeslot() != null)
                 // We penalize if there does NOT exist a weekly availability window that fully contains the lesson
                 .ifNotExists(WeeklyAvailability.class,
-                        // Match the teacher
-                        Joiners.equal(Lesson::getTeacher, WeeklyAvailability::getUser),
+                        // Match the teacher by comparing their shared AbstractUser
+                        Joiners.equal(lesson -> lesson.getTeacher().getUser(), WeeklyAvailability::getUser),
                         // Match the day of the week
                         Joiners.equal(lesson -> lesson.getTimeslot().getDayOfWeek(), WeeklyAvailability::getDayOfWeek),
                         // Ensure the availability window fully covers the timeslot
@@ -149,10 +167,10 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint teacherOneTimeUnavailability(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
+                .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.getTimeslot() != null)
                 .join(ResourceUnavailability.class,
-                        Joiners.equal(Lesson::getTeacher, ResourceUnavailability::getUser)
+                        Joiners.equal(lesson -> lesson.getTeacher().getUser(), ResourceUnavailability::getUser)
                 )
                 .join(LocalDate.class)
                 .filter((lesson, unavail, scheduleStartDate) -> {
@@ -177,24 +195,109 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
         return scheduleStartDate.plusDays(shift);
     }
     /**
-     * SOFT CONSTRAINT: Minimize Teacher Gaps
-     *
-     * Minimize time gaps between lessons for the same teacher on the same day.
-     * It's better if lessons are consecutive (e.g., 09:00-10:00, 10:00-11:00)
-     * rather than having gaps (e.g., 09:00-10:00, 12:00-13:00).
-     *
-     * The penalty is proportional to the gap duration in minutes.
-     *
-     * @param constraintFactory the factory to create constraints
-     * @return minimize gaps constraint
+     * HARD CONSTRAINT: Group Lesson Cannot Have Student
+     * A group lesson (isPrivate=false) must never have a student assigned.
      */
+    Constraint groupLessonCannotHaveStudent(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> !lesson.isPrivate() && lesson.getStudent() != null)
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Group lesson cannot have a student assigned");
+    }
+
+    /**
+     * HARD CONSTRAINT: Student Must Be Subscribed To Teacher
+     * A student can only attend a private lesson if they are linked to that teacher.
+     */
+    Constraint studentMustBeSubscribedToTeacher(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate() && lesson.getStudent() != null)
+                .filter(lesson -> !lesson.getTeacher().getPrivateStudents().contains(lesson.getStudent()))
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Student is not subscribed to this teacher");
+    }
+
+    /**
+     * HARD CONSTRAINT: Student Conflict (Double Booking)
+     * A student cannot attend two lessons at the same time.
+     */
+    Constraint studentConflict(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.getStudent() != null && lesson.getTimeslot() != null)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
+                        Joiners.lessThan(Lesson::getId),
+                        Joiners.equal(Lesson::getStudent),
+                        Joiners.equal(Lesson::getTimeslot)
+                )
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Student conflict (double booking)");
+    }
+
+    /**
+     * HARD CONSTRAINT: Student Outside Weekly Availability
+     * The lesson timeslot must fall within the student's declared weekly availability windows.
+     */
+    Constraint studentOutsideWeeklyAvailability(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate() && lesson.getStudent() != null && lesson.getTimeslot() != null)
+                .ifNotExists(WeeklyAvailability.class,
+                        Joiners.equal(Lesson::getStudent, WeeklyAvailability::getUser),
+                        Joiners.equal(lesson -> lesson.getTimeslot().getDayOfWeek(), WeeklyAvailability::getDayOfWeek),
+                        Joiners.filtering((lesson, availability) ->
+                                !lesson.getTimeslot().getStartTime().isBefore(availability.getStartTime()) &&
+                                !lesson.getTimeslot().getEndTime().isAfter(availability.getEndTime())
+                        )
+                )
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Student scheduled outside weekly availability");
+    }
+
+    /**
+     * HARD CONSTRAINT: Student One-Time Unavailability
+     * The lesson must not overlap with a student's one-time ResourceUnavailability exception.
+     */
+    Constraint studentOneTimeUnavailability(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate() && lesson.getStudent() != null && lesson.getTimeslot() != null)
+                .join(ResourceUnavailability.class,
+                        Joiners.equal(Lesson::getStudent, ResourceUnavailability::getUser)
+                )
+                .join(LocalDate.class)
+                .filter((lesson, unavail, scheduleStartDate) -> {
+                    LocalDate lessonDate = mapDayOfWeekToDate(scheduleStartDate, lesson.getTimeslot().getDayOfWeek());
+                    if (!lessonDate.equals(unavail.getDate())) return false;
+                    return lesson.getTimeslot().getStartTime().isBefore(unavail.getEndTime()) &&
+                           lesson.getTimeslot().getEndTime().isAfter(unavail.getStartTime());
+                })
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Student one-time unavailability conflict");
+    }
+
+    /**
+     * SOFT CONSTRAINT: Reward Student Assignment
+     * Because allowsUnassigned=true, the solver could score 0 Hard by leaving all private
+     * lessons unmatched. This reward forces the solver to maximize filled private slots.
+     */
+    Constraint rewardStudentAssignment(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate() && lesson.getStudent() != null)
+                .reward(HardSoftScore.ONE_SOFT)
+                .asConstraint("Reward for assigning a student to a private lesson");
+    }
+
     /**
      * SOFT CONSTRAINT: Minimize Teacher Gaps
      */
     Constraint minimizeTeacherGaps(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
-                .join(Lesson.class,
+                .forEachIncludingNullVars(Lesson.class)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
                         // Different lessons
                         Joiners.lessThan(Lesson::getId),
                         // Same teacher
@@ -247,7 +350,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint rewardPrimeTime(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
+                .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> {
                     if (lesson.getTimeslot() == null) {
                         return false;
@@ -275,7 +378,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      */
     Constraint balanceTeacherLoad(ConstraintFactory constraintFactory) {
         return constraintFactory
-                .forEach(Lesson.class)
+                .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.getTimeslot() != null)
                 .groupBy(Lesson::getTeacher, ConstraintCollectors.count())
                 .penalize(HardSoftScore.ONE_SOFT,

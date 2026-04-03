@@ -16,7 +16,7 @@ public record SolveResponse(
         return new SolveResponse(
             scheduleId,
             "Schedule optimization started. Check status using the provided URL.",
-            "/api/solver/status/" + scheduleId
+            "/api/admin/solver/status/" + scheduleId
         );
     }
 }

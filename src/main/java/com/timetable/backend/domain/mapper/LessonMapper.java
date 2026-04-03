@@ -26,7 +26,7 @@ public interface LessonMapper {
     @Mapping(source = "id", target = "id")
     @Mapping(source = "lesson.teacher", target = "teacher")
     @Mapping(source = "lesson.danceGroup", target = "danceGroup")
-    @Mapping(source = "lesson.student", target = "student")
+    @Mapping(source = "student", target = "student")
     @Mapping(source = "lesson.durationMinutes", target = "durationMinutes")
     @Mapping(source = "lesson.private", target = "isPrivate")
     @Mapping(source = "lesson.pinned", target = "isPinned")

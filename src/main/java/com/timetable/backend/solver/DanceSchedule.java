@@ -15,8 +15,10 @@ import java.util.List;
 
 /**
  * Planning Solution for the dance school timetable problem.
- * Contains all problem facts (timeslots, rooms, teachers) and planning entities (lessons).
- * Timefold Solver will optimize the assignment of timeslots and rooms to lessons.
+ * Contains all problem facts (timeslots, teachers) and planning entities (lessons).
+ * Timefold Solver assigns timeslots to private lessons and students from the pool.
+ * Room is NOT a planning variable (single room, pre-assigned).
+ * Group lessons are always pinned — the solver respects their time/teacher.
  */
 @PlanningSolution
 @Getter
@@ -34,9 +36,6 @@ public class DanceSchedule {
     @ValueRangeProvider(id = "timeslotRange")
     private final List<Timeslot> timeslotList;
 
-    @ProblemFactCollectionProperty
-    @ValueRangeProvider(id = "roomRange")
-    private final List<Room> roomList;
 
     @ProblemFactCollectionProperty
     private final List<Teacher> teacherList;
@@ -50,6 +49,14 @@ public class DanceSchedule {
 
     @ProblemFactCollectionProperty
     private final List<LocalDate> scheduleDateAnchorList;
+
+    /**
+     * Pool of students available for assignment to private lesson templates.
+     * Exposed as a ValueRangeProvider so the solver can assign them to Lesson.student.
+     */
+    @ProblemFactCollectionProperty
+    @ValueRangeProvider(id = "studentRange")
+    private final List<Student> studentList;
 
     @PlanningEntityCollectionProperty
     private final List<Lesson> lessonList;

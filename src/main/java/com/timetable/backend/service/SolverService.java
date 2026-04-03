@@ -120,13 +120,16 @@ public class SolverService {
     }
 
     /**
-     * Checks if all lessons have been assigned timeslots and rooms.
+     * Checks if all lessons have been assigned timeslots.
      *
      * @param scheduledLessons the list of ScheduledLesson to check
      * @return true if all lessons are assigned
      */
     public boolean isFullyAssigned(List<ScheduledLesson> scheduledLessons) {
+        if (scheduledLessons.isEmpty()) {
+            return false; // Empty schedule is not "fully assigned"
+        }
         return scheduledLessons.stream()
-            .allMatch(lesson -> lesson.getStatus() == ScheduledLessonStatus.ASSIGNED);
+                .allMatch(lesson -> lesson.getStatus() == ScheduledLessonStatus.ASSIGNED);
     }
 }

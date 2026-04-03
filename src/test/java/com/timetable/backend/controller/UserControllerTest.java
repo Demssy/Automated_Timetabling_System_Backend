@@ -47,7 +47,9 @@ class UserControllerTest {
             "student@example.com",
             "John Doe",
             "STUDENT",
-            true
+            true,
+            null,
+            null
         );
 
         when(userService.getCurrentUserInfo("student@example.com"))
@@ -81,7 +83,9 @@ class UserControllerTest {
             "teacher@example.com",
             "Jane Smith",
             "TEACHER",
-            true
+            true,
+            null,
+            null
         );
 
         when(userService.getCurrentUserInfo("teacher@example.com"))
@@ -103,7 +107,9 @@ class UserControllerTest {
             "admin@example.com",
             "Admin User",
             "ADMIN",
-            true
+            true,
+            null,
+            null
         );
 
         when(userService.getCurrentUserInfo("admin@example.com"))

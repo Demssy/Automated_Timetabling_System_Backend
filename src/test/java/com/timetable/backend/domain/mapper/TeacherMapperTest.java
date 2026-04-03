@@ -1,7 +1,7 @@
 package com.timetable.backend.domain.mapper;
 
-import com.timetable.backend.domain.dto.CreateTeacherRequest;
 import com.timetable.backend.domain.dto.TeacherResponse;
+import com.timetable.backend.domain.model.AbstractUser;
 import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Teacher;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,10 +25,16 @@ class TeacherMapperTest {
 
     @Test
     void shouldMapTeacherToTeacherResponse_whenGivenValidTeacher() {
+        // Teacher now uses composition — email and fullName live on the nested AbstractUser
+        AbstractUser user = new AbstractUser() {};
+        user.setId(1L);
+        user.setEmail("teacher@test.com");
+        user.setPasswordHash("hashedPassword");
+        user.setFullName("John Doe");
+
         Teacher teacher = new Teacher();
         teacher.setId(1L);
-        teacher.setEmail("teacher@test.com");
-        teacher.setFullName("John Doe");
+        teacher.setUser(user);
         teacher.setMaxDailyHours(5);
         teacher.setColorCode("#FFFFFF");
 
@@ -39,28 +45,12 @@ class TeacherMapperTest {
         TeacherResponse response = teacherMapper.toTeacherResponse(teacher);
 
         assertNotNull(response);
-        assertEquals(teacher.getId(), response.id());
-        assertEquals(teacher.getEmail(), response.email());
-        assertEquals(teacher.getFullName(), response.fullName());
-        assertEquals(teacher.getMaxDailyHours(), response.maxDailyHours());
-        assertEquals(teacher.getColorCode(), response.colorCode());
+        assertEquals(teacher.getId(),             response.id());
+        assertEquals(user.getEmail(),             response.email());
+        assertEquals(user.getFullName(),          response.fullName());
+        assertEquals(teacher.getMaxDailyHours(),  response.maxDailyHours());
+        assertEquals(teacher.getColorCode(),      response.colorCode());
         assertEquals(1, response.qualifiedStyles().size());
         assertEquals("Salsa", response.qualifiedStyles().iterator().next().name());
-    }
-
-    @Test
-    void toTeacher() {
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "teacher@test.com", "password", "John Doe", 5, "#FFFFFF", Set.of(10L)
-        );
-
-        Teacher teacher = teacherMapper.toTeacher(request);
-
-        assertNotNull(teacher);
-        assertEquals(request.email(), teacher.getEmail());
-        assertEquals(request.fullName(), teacher.getFullName());
-        assertEquals(request.maxDailyHours(), teacher.getMaxDailyHours());
-        assertEquals(request.colorCode(), teacher.getColorCode());
-        // danceStyles are ignored in mapping as per annotation, handled in service
     }
 }

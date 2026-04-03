@@ -2,7 +2,9 @@ package com.timetable.backend.service;
 
 import com.timetable.backend.domain.dto.CreateTeacherRequest;
 import com.timetable.backend.domain.dto.TeacherResponse;
+import com.timetable.backend.domain.mapper.StudentMapper;
 import com.timetable.backend.domain.mapper.TeacherMapper;
+import com.timetable.backend.domain.model.AbstractUser;
 import com.timetable.backend.domain.model.DanceStyle;
 import com.timetable.backend.domain.model.Role;
 import com.timetable.backend.domain.model.Teacher;
@@ -10,12 +12,12 @@ import com.timetable.backend.domain.repository.DanceStyleRepository;
 import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.UserRepository;
+import com.timetable.backend.domain.repository.WeeklyAvailabilityRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Optional;
@@ -37,38 +39,38 @@ class TeacherServiceTest {
     @Mock
     private DanceStyleRepository danceStyleRepository;
     @Mock
-    private PasswordEncoder passwordEncoder;
+    private WeeklyAvailabilityRepository weeklyAvailabilityRepository;
     @Mock
     private TeacherMapper teacherMapper;
+    @Mock
+    private StudentMapper studentMapper;
 
     @InjectMocks
     private TeacherService teacherService;
 
     @Test
     void shouldCreateTeacherSuccessfully() {
-        // Arrange
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "teacher@test.com", "password", "John Doe", 5, "#FFFFFF", Set.of(1L)
-        );
+        // Arrange: CreateTeacherRequest now promotes an existing user to Teacher by userId
+        CreateTeacherRequest request = new CreateTeacherRequest(1L, 5, "#FFFFFF", Set.of(1L));
 
         Role teacherRole = new Role(2L, "TEACHER");
         DanceStyle style = new DanceStyle("Salsa");
         style.setId(1L);
-        Teacher teacher = new Teacher();
-        teacher.setEmail(request.email());
+
+        AbstractUser existingUser = mock(AbstractUser.class);
 
         Teacher savedTeacher = new Teacher();
-        savedTeacher.setId(10L);
-        savedTeacher.setEmail(request.email());
+        savedTeacher.setId(1L);
+        savedTeacher.setUser(existingUser);
 
-        TeacherResponse response = new TeacherResponse(10L, "teacher@test.com", "John Doe", 5, "#FFFFFF", Set.of());
+        TeacherResponse response = new TeacherResponse(1L, "teacher@test.com", "John Doe", 5, "#FFFFFF", Set.of());
 
-        when(userRepository.existsByEmail(request.email())).thenReturn(false);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(teacherRepository.existsById(1L)).thenReturn(false);
         when(roleRepository.findByName("TEACHER")).thenReturn(Optional.of(teacherRole));
-        when(teacherMapper.toTeacher(request)).thenReturn(teacher);
-        when(passwordEncoder.encode(request.password())).thenReturn("encodedPwd");
-        when(danceStyleRepository.findAllById(request.qualifiedStyleIds())).thenReturn(List.of(style));
-        when(teacherRepository.save(teacher)).thenReturn(savedTeacher);
+        when(userRepository.saveAndFlush(existingUser)).thenReturn(existingUser);
+        when(danceStyleRepository.findAllById(any())).thenReturn(List.of(style));
+        when(teacherRepository.save(any(Teacher.class))).thenReturn(savedTeacher);
         when(teacherMapper.toTeacherResponse(savedTeacher)).thenReturn(response);
 
         // Act
@@ -76,23 +78,33 @@ class TeacherServiceTest {
 
         // Assert
         assertNotNull(result);
-        assertEquals(10L, result.id());
-        verify(teacherRepository).save(teacher);
-
-        assertEquals(teacherRole, teacher.getRole());
-        assertEquals("encodedPwd", teacher.getPasswordHash());
-        assertNotNull(teacher.getDanceStyles());
+        assertEquals(1L, result.id());
+        verify(teacherRepository).save(any(Teacher.class));
+        verify(existingUser).setRole(teacherRole);
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenEmailAlreadyExists() {
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "teacher@test.com", "password", "John Doe", 5, "#FFFFFF", Set.of()
-        );
-        when(userRepository.existsByEmail(request.email())).thenReturn(true);
+    void shouldThrowIllegalArgumentExceptionWhenUserNotFound() {
+        // Arrange: userId 99 does not exist
+        CreateTeacherRequest request = new CreateTeacherRequest(99L, 5, "#FFFFFF", Set.of());
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
+        // Act & Assert
+        assertThrows(IllegalArgumentException.class, () -> teacherService.createTeacher(request));
+        verify(teacherRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldThrowIllegalArgumentExceptionWhenUserAlreadyIsTeacher() {
+        // Arrange: userId 1 exists in users table but is already promoted to Teacher
+        CreateTeacherRequest request = new CreateTeacherRequest(1L, 5, "#FFFFFF", Set.of());
+        AbstractUser existingUser = mock(AbstractUser.class);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
+        when(teacherRepository.existsById(1L)).thenReturn(true);
+
+        // Act & Assert
         assertThrows(IllegalArgumentException.class, () -> teacherService.createTeacher(request));
         verify(teacherRepository, never()).save(any());
     }
 }
-

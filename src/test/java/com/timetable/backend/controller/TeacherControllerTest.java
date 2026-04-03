@@ -47,9 +47,8 @@ class TeacherControllerTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void createTeacher_Success() throws Exception {
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "teacher@test.com", "password", "John Doe", 5, "#FFFFFF", Set.of(1L)
-        );
+        // CreateTeacherRequest now promotes an existing user (userId) to Teacher role
+        CreateTeacherRequest request = new CreateTeacherRequest(1L, 5, "#FFFFFF", Set.of(1L));
         TeacherResponse response = new TeacherResponse(
                 1L, "teacher@test.com", "John Doe", 5, "#FFFFFF", Set.of()
         );
@@ -67,9 +66,7 @@ class TeacherControllerTest {
     @Test
     @WithMockUser(roles = "STUDENT")
     void createTeacher_Forbidden() throws Exception {
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "teacher@test.com", "password", "John Doe", 5, "#FFFFFF", Set.of(1L)
-        );
+        CreateTeacherRequest request = new CreateTeacherRequest(1L, 5, "#FFFFFF", Set.of(1L));
 
         mockMvc.perform(post("/api/teachers")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -79,10 +76,9 @@ class TeacherControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void createTeacher_ValidationFailure_InvalidEmail() throws Exception {
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "invalid-email", "password", "John Doe", 5, "#FFFFFF", Set.of(1L)
-        );
+    void createTeacher_ValidationFailure_NullUserId() throws Exception {
+        // userId is @NotNull — sending null should return 400 Bad Request
+        CreateTeacherRequest request = new CreateTeacherRequest(null, 5, "#FFFFFF", Set.of());
 
         mockMvc.perform(post("/api/teachers")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -92,36 +88,9 @@ class TeacherControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void createTeacher_ValidationFailure_ShortPassword() throws Exception {
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "teacher@test.com", "123", "John Doe", 5, "#FFFFFF", Set.of(1L)
-        );
-
-        mockMvc.perform(post("/api/teachers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @WithMockUser(roles = "ADMIN")
-    void createTeacher_ValidationFailure_EmptyName() throws Exception {
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "teacher@test.com", "password", "", 5, "#FFFFFF", Set.of(1L)
-        );
-
-        mockMvc.perform(post("/api/teachers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @WithMockUser(roles = "ADMIN")
-    void createTeacher_ValidationFailure_InvalidColor() throws Exception {
-        CreateTeacherRequest request = new CreateTeacherRequest(
-                "teacher@test.com", "password", "John Doe", 5, "ZZZZZZ", Set.of(1L)
-        );
+    void createTeacher_ValidationFailure_InvalidColorCode() throws Exception {
+        // colorCode pattern must be a valid hex color
+        CreateTeacherRequest request = new CreateTeacherRequest(1L, 5, "ZZZZZZ", Set.of());
 
         mockMvc.perform(post("/api/teachers")
                         .contentType(MediaType.APPLICATION_JSON)

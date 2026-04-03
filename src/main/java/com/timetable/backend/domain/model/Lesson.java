@@ -10,7 +10,9 @@ import lombok.*;
 
 /**
  * Represents a lesson that needs to be scheduled.
- * This is the main planning entity - Timefold Solver will assign timeslot and room.
+ * This is the main planning entity — Timefold Solver assigns timeslot (private only)
+ * and student (private only). Room is pre-assigned (single room).
+ * Group lessons are always pinned and the solver only respects their existence.
  */
 @Entity
 @Table(name = "lessons")
@@ -37,7 +39,10 @@ public class Lesson {
     @JoinColumn(name = "dance_group_id", nullable = true)
     private DanceGroup danceGroup;
 
-    /** Assigned only for private lessons ({@code isPrivate = true}). Null for group lessons. */
+    /** Assigned only for private lessons ({@code isPrivate = true}). Null for group lessons.
+     *  {@code nullable = true} tells Timefold that unassigned (null) is a valid planning value,
+     *  which lets the solver leave template private lessons without a student if no valid match exists. */
+    @PlanningVariable(valueRangeProviderRefs = "studentRange", nullable = true)
     @ManyToOne
     @JoinColumn(name = "student_id", nullable = true)
     private Student student;
@@ -47,7 +52,7 @@ public class Lesson {
     @JoinColumn(name = "timeslot_id")
     private Timeslot timeslot;
 
-    @PlanningVariable(valueRangeProviderRefs = "roomRange")
+    /** Room is NOT a planning variable — single room, pre-assigned by default. */
     @ManyToOne
     @JoinColumn(name = "room_id")
     private Room room;

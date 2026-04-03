@@ -40,4 +40,9 @@ public class ScheduledLesson {
     @ManyToOne
     @JoinColumn(name = "room_id")
     private Room room;
+
+    /** Solver-assigned student for private lesson templates. Null for group lessons. */
+    @ManyToOne
+    @JoinColumn(name = "student_id")
+    private Student student;
 }

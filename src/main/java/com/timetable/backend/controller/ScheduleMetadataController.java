@@ -56,6 +56,30 @@ public class ScheduleMetadataController {
         return ResponseEntity.ok(service.publish(id));
     }
 
+    /**
+     * Archives a schedule, transitioning its status to ARCHIVED.
+     *
+     * @param id the schedule ID to archive
+     * @return the updated schedule DTO with ARCHIVED status
+     */
+    @PatchMapping("/{id}/archive")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ScheduleMetadataDTO> archive(@PathVariable Long id) {
+        return ResponseEntity.ok(service.archive(id));
+    }
+
+    /**
+     * Reverts a schedule back to DRAFT status, allowing further editing.
+     *
+     * @param id the schedule ID to revert
+     * @return the updated schedule DTO with DRAFT status
+     */
+    @PatchMapping("/{id}/draft")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ScheduleMetadataDTO> revertToDraft(@PathVariable Long id) {
+        return ResponseEntity.ok(service.revertToDraft(id));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {

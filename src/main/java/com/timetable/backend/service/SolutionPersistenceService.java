@@ -64,7 +64,7 @@ public class SolutionPersistenceService {
                 return;
             }
 
-            var status = lesson.getTimeslot() != null && lesson.getRoom() != null
+            var status = lesson.getTimeslot() != null
                 ? ScheduledLessonStatus.ASSIGNED
                 : ScheduledLessonStatus.UNASSIGNED;
 
@@ -72,6 +72,7 @@ public class SolutionPersistenceService {
             if (existing != null) {
                 existing.setTimeslot(lesson.getTimeslot());
                 existing.setRoom(lesson.getRoom());
+                existing.setStudent(lesson.getStudent());
                 existing.setStatus(status);
                 snapshotsToSave.add(existing);
                 return;
@@ -83,7 +84,8 @@ public class SolutionPersistenceService {
                 schedule,
                 lesson.getTimeslot(),
                 status,
-                lesson.getRoom()
+                lesson.getRoom(),
+                lesson.getStudent()
             ));
         });
 

@@ -48,7 +48,7 @@ class AuthControllerTest {
         RegisterRequest request = new RegisterRequest(
                 "student@test.com", "password", "Student Name", LocalDate.of(2000, 1, 1)
         );
-        UserResponse userResponse = new UserResponse(1L, "student@test.com", "Student Name", "STUDENT", true);
+        UserResponse userResponse = new UserResponse(1L, "student@test.com", "Student Name", "STUDENT", true, null, null);
 
         when(authService.registerStudent(request.email(), request.password(), request.fullName(), request.birthDate()))
                 .thenReturn(userResponse);
@@ -68,7 +68,7 @@ class AuthControllerTest {
     @Test
     void login_Success() throws Exception {
         AuthenticationRequest request = new AuthenticationRequest("student@test.com", "password");
-        UserResponse userResponse = new UserResponse(1L, "student@test.com", "Student Name", "STUDENT", true);
+        UserResponse userResponse = new UserResponse(1L, "student@test.com", "Student Name", "STUDENT", true, null, null);
 
         when(authService.authenticate(request.email(), request.password())).thenReturn(userResponse);
         when(jwtService.getExpirationMs()).thenReturn(3600000L);
