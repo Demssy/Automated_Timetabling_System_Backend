@@ -14,7 +14,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Central REST controller for all administrator operations.
@@ -38,6 +37,29 @@ public class AdminController {
     private final DanceGroupService danceGroupService;
     private final LessonService lessonService;
     private final LessonMapper lessonMapper;
+    private final ScheduleMetadataService scheduleMetadataService;
+
+    // =========================================================================
+    // Schedule management  —  /api/admin/schedules
+    // =========================================================================
+
+    /**
+     * Returns ALL schedules regardless of status (DRAFT, PUBLISHED, ARCHIVED).
+     * This is the admin-panel view — only admins can see unpublished schedules.
+     */
+    @GetMapping("/schedules")
+    public ResponseEntity<List<ScheduleMetadataDTO>> getAllSchedules() {
+        return ResponseEntity.ok(scheduleMetadataService.getAllForAdmin());
+    }
+
+    /**
+     * Returns a single schedule by ID with no status restriction.
+     * Used in the admin panel to navigate to any schedule (including drafts).
+     */
+    @GetMapping("/schedules/{id}")
+    public ResponseEntity<ScheduleMetadataDTO> getScheduleById(@PathVariable Long id) {
+        return ResponseEntity.ok(scheduleMetadataService.getByIdForAdmin(id));
+    }
 
     // =========================================================================
     // User management  —  /api/admin/users
@@ -72,6 +94,21 @@ public class AdminController {
             @PathVariable Long id,
             @RequestBody @Valid UpdateUserRequest request) {
         return ResponseEntity.ok(userService.updateUser(id, request));
+    }
+
+    /**
+     * Admin-only: bulk replace a user's weekly schedule + one-time exceptions.
+     * Mirrors the self-service endpoint PUT /api/user/me/availability but for any user.
+     *
+     * @param id      target user ID
+     * @param request contains weeklyAvailabilities and oneTimeUnavailabilities lists
+     * @return updated UserResponse reflecting the new availability state
+     */
+    @PutMapping("/users/{id}/availability")
+    public ResponseEntity<UserResponse> updateUserAvailability(
+            @PathVariable Long id,
+            @RequestBody @Valid UpdateAvailabilityRequest request) {
+        return ResponseEntity.ok(userService.updateUserAvailability(id, request));
     }
 
     /** Delete a user. */

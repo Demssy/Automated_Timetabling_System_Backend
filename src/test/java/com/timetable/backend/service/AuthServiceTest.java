@@ -16,6 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,14 +28,12 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
-    @Mock
-    private UserRepository userRepository;
-    @Mock
-    private RoleRepository roleRepository;
-    @Mock
-    private PasswordEncoder passwordEncoder;
-    @Mock
-    private AuthenticationManager authenticationManager;
+    @Mock private UserRepository userRepository;
+    @Mock private RoleRepository roleRepository;
+    @Mock private PasswordEncoder passwordEncoder;
+    @Mock private AuthenticationManager authenticationManager;
+    // Required after refactor: AuthService now delegates to UserService for the response
+    @Mock private UserService userService;
 
     @InjectMocks
     private AuthService authService;
@@ -47,9 +46,13 @@ class AuthServiceTest {
         LocalDate birthDate = LocalDate.of(2000, 1, 1);
 
         Role studentRole = new Role(1L, "STUDENT");
+        UserResponse expectedResponse = new UserResponse(1L, email, fullName, "STUDENT", true, List.of(), List.of());
+
         when(userRepository.existsByEmail(email)).thenReturn(false);
         when(roleRepository.findByName("STUDENT")).thenReturn(Optional.of(studentRole));
         when(passwordEncoder.encode(password)).thenReturn("encoded");
+        // AuthService now delegates to UserService after saving — stub the delegated call
+        when(userService.getCurrentUserInfo(email)).thenReturn(expectedResponse);
 
         UserResponse response = authService.registerStudent(email, password, fullName, birthDate);
 
@@ -58,6 +61,7 @@ class AuthServiceTest {
         assertEquals(fullName, response.fullName());
         assertEquals("STUDENT", response.role());
         verify(userRepository).save(any(Student.class));
+        verify(userService).getCurrentUserInfo(email);
     }
 
     @Test
@@ -69,6 +73,7 @@ class AuthServiceTest {
             authService.registerStudent(email, "password", "Name", LocalDate.now())
         );
         verify(userRepository, never()).save(any());
+        verify(userService, never()).getCurrentUserInfo(any());
     }
 
     @Test
@@ -76,15 +81,11 @@ class AuthServiceTest {
         String email = "user@test.com";
         String password = "password";
         Authentication auth = mock(Authentication.class);
-
-        Student student = new Student();
-        student.setId(1L);
-        student.setEmail(email);
-        student.setFullName("Test User");
-        student.setRole(new Role(1L, "STUDENT"));
+        UserResponse expectedResponse = new UserResponse(1L, email, "Test User", "STUDENT", true, List.of(), List.of());
 
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(auth);
-        when(userRepository.findByEmail(email)).thenReturn(Optional.of(student));
+        // AuthService no longer queries userRepository directly — it delegates to UserService
+        when(userService.getCurrentUserInfo(email)).thenReturn(expectedResponse);
 
         UserResponse response = authService.authenticate(email, password);
 
@@ -92,5 +93,8 @@ class AuthServiceTest {
         assertEquals(email, response.email());
         assertEquals("Test User", response.fullName());
         assertEquals("STUDENT", response.role());
+        verify(userService).getCurrentUserInfo(email);
+        // userRepository.findByEmail must NOT be called directly by AuthService anymore
+        verify(userRepository, never()).findByEmail(email);
     }
 }

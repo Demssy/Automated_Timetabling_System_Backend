@@ -18,13 +18,13 @@ public class ScheduleMetadataController {
     private final ScheduleMetadataService service;
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STUDENT', 'TEACHER')")
     public ResponseEntity<List<ScheduleMetadataDTO>> getAll() {
         return ResponseEntity.ok(service.getAll());
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STUDENT', 'TEACHER')")
     public ResponseEntity<ScheduleMetadataDTO> getById(@PathVariable Long id) {
         return ResponseEntity.ok(service.getById(id));
     }
@@ -41,6 +41,19 @@ public class ScheduleMetadataController {
             @PathVariable Long id,
             @RequestBody @Valid ScheduleMetadataDTO dto) {
         return ResponseEntity.ok(service.update(id, dto));
+    }
+
+    /**
+     * Publishes a schedule, transitioning its status from DRAFT to PUBLISHED.
+     * Only administrators are allowed to perform this action.
+     *
+     * @param id the schedule ID to publish
+     * @return the updated schedule DTO with PUBLISHED status
+     */
+    @PatchMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ScheduleMetadataDTO> publish(@PathVariable Long id) {
+        return ResponseEntity.ok(service.publish(id));
     }
 
     @DeleteMapping("/{id}")

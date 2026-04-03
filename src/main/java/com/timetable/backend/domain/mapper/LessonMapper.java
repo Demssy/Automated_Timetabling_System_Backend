@@ -9,12 +9,13 @@ import org.mapstruct.Mapping;
 /**
  * MapStruct mapper for converting lesson entities to DTOs.
  */
-@Mapper(componentModel = "spring", uses = {TeacherMapper.class, DictionaryMapper.class})
+@Mapper(componentModel = "spring", uses = {TeacherMapper.class, DictionaryMapper.class, StudentMapper.class})
 public interface LessonMapper {
 
     @Mapping(source = "id", target = "id")
     @Mapping(source = "teacher", target = "teacher")
     @Mapping(source = "danceGroup", target = "danceGroup")
+    @Mapping(source = "student", target = "student")
     @Mapping(source = "private", target = "isPrivate")
     @Mapping(source = "pinned", target = "isPinned")
     @Mapping(source = "active", target = "isActive")
@@ -25,6 +26,7 @@ public interface LessonMapper {
     @Mapping(source = "id", target = "id")
     @Mapping(source = "lesson.teacher", target = "teacher")
     @Mapping(source = "lesson.danceGroup", target = "danceGroup")
+    @Mapping(source = "lesson.student", target = "student")
     @Mapping(source = "lesson.durationMinutes", target = "durationMinutes")
     @Mapping(source = "lesson.private", target = "isPrivate")
     @Mapping(source = "lesson.pinned", target = "isPinned")

@@ -23,9 +23,12 @@ public interface StudentMapper {
      */
     StudentResponse toStudentResponse(Student student);
 
+    @Mapping(target = "password", ignore = true)
     StudentDTO toStudentDTO(Student student);
 
-    @Mapping(target = "passwordHash", ignore = true) // Handled in service
-    @Mapping(target = "role", ignore = true)
+    @Mapping(target = "passwordHash",      ignore = true)
+    @Mapping(target = "role",              ignore = true)
+    @Mapping(target = "active",            ignore = true)
+    @Mapping(target = "preferredTeachers", ignore = true)
     Student toStudent(StudentDTO studentDTO);
 }

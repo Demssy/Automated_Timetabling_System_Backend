@@ -6,11 +6,13 @@ import com.timetable.backend.domain.model.ScheduleMetadata;
 import com.timetable.backend.domain.model.ScheduleStatus;
 import com.timetable.backend.domain.repository.ScheduleMetadataRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ScheduleMetadataService {
@@ -18,15 +20,52 @@ public class ScheduleMetadataService {
     private final ScheduleMetadataRepository repository;
     private final ScheduleMetadataMapper mapper;
 
+    /**
+     * Returns only PUBLISHED schedules.
+     * Intended for the public-facing main page — all roles, including ADMIN, see the same data here.
+     */
     @Transactional(readOnly = true)
     public List<ScheduleMetadataDTO> getAll() {
+        log.debug("Fetching all PUBLISHED schedules for main page");
+        return repository.findAllByStatus(ScheduleStatus.PUBLISHED).stream()
+                .map(mapper::toDTO)
+                .toList();
+    }
+
+    /**
+     * Returns ALL schedules regardless of status.
+     * Intended exclusively for the admin panel — only ADMIN role may call this.
+     */
+    @Transactional(readOnly = true)
+    public List<ScheduleMetadataDTO> getAllForAdmin() {
+        log.debug("Admin fetching all schedules (including drafts)");
         return repository.findAll().stream()
                 .map(mapper::toDTO)
                 .toList();
     }
 
+    /**
+     * Returns a single schedule by ID.
+     * Non-admin users can only view PUBLISHED schedules.
+     * Admins can view any schedule by ID (e.g. to navigate to it from the admin panel).
+     */
     @Transactional(readOnly = true)
     public ScheduleMetadataDTO getById(Long id) {
+        ScheduleMetadata entity = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
+
+        if (entity.getStatus() != ScheduleStatus.PUBLISHED) {
+            throw new IllegalArgumentException("Schedule not found with id: " + id);
+        }
+
+        return mapper.toDTO(entity);
+    }
+
+    /**
+     * Returns a single schedule by ID for admin use — no status restriction.
+     */
+    @Transactional(readOnly = true)
+    public ScheduleMetadataDTO getByIdForAdmin(Long id) {
         return repository.findById(id)
                 .map(mapper::toDTO)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
@@ -53,6 +92,44 @@ public class ScheduleMetadataService {
         if (dto.status() != null) {
             entity.setStatus(dto.status());
         }
+
+        return mapper.toDTO(repository.save(entity));
+    }
+
+    /**
+     * Publishes a schedule by transitioning its status to PUBLISHED.
+     *
+     * <p>Business rule: only one schedule may be PUBLISHED per date range.
+     * If another PUBLISHED schedule's validity period overlaps with this one, the
+     * operation is rejected with an {@link IllegalStateException}.
+     *
+     * @param id the schedule ID to publish
+     * @return the updated schedule DTO
+     * @throws IllegalArgumentException if schedule is not found
+     * @throws IllegalStateException    if an overlapping PUBLISHED schedule already exists
+     */
+    @Transactional
+    public ScheduleMetadataDTO publish(Long id) {
+        ScheduleMetadata entity = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
+
+        boolean overlap = repository.existsByStatusAndIdNotAndValidFromLessThanEqualAndValidToGreaterThanEqual(
+                ScheduleStatus.PUBLISHED,
+                id,
+                entity.getValidTo(),
+                entity.getValidFrom()
+        );
+
+        if (overlap) {
+            throw new IllegalStateException(
+                    "Cannot publish schedule id=" + id +
+                    ": another PUBLISHED schedule already covers the same date range (" +
+                    entity.getValidFrom() + " — " + entity.getValidTo() + ")"
+            );
+        }
+
+        log.info("Publishing schedule id={}, previous status={}", id, entity.getStatus());
+        entity.setStatus(ScheduleStatus.PUBLISHED);
 
         return mapper.toDTO(repository.save(entity));
     }

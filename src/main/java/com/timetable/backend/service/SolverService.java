@@ -8,8 +8,6 @@ import com.timetable.backend.domain.repository.*;
 import com.timetable.backend.solver.DanceSchedule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,13 +23,8 @@ import java.util.List;
 public class SolverService {
 
     private final SolverManager<DanceSchedule, Long> solverManager;
+    private final SolverProblemLoaderService problemLoaderService;
 
-    // Repositories
-    private final LessonRepository lessonRepository;
-    private final TimeslotRepository timeslotRepository;
-    private final RoomRepository roomRepository;
-    private final TeacherRepository teacherRepository;
-    private final ResourceUnavailabilityRepository resourceUnavailabilityRepository;
     private final ScheduledLessonRepository scheduledLessonRepository;
     private final ScheduleMetadataRepository scheduleMetadataRepository;
     private final SolutionPersistenceService persistenceService;
@@ -40,72 +33,16 @@ public class SolverService {
      *
      * @param scheduleId unique identifier for this solving session (can be any Long, e.g., timestamp)
      */
-
-    @Lazy
-    @Autowired
-    private SolverService self;
-
     public void solve(Long scheduleId) {
         log.info("Starting solver for schedule ID: {}", scheduleId);
 
         solverManager.solveBuilder()
                 .withProblemId(scheduleId)
-                // Call through Spring proxy so @Transactional on loadProblem is applied.
-                .withProblemFinder(id -> self.loadProblem(id))
+                .withProblemFinder(problemLoaderService::loadProblem)
                 .withBestSolutionConsumer(persistenceService::saveSolution)
                 .run();
     }
 
-    @Transactional(readOnly = true)
-    public DanceSchedule loadProblem(Long scheduleId) {
-        DanceSchedule schedule = loadScheduleFromDatabase(scheduleId);
-
-        // Clear planning variables for non-pinned lessons
-        // (Solver will assign timeslot and room)
-        schedule.getLessonList().forEach(lesson -> {
-            if (!lesson.isPinned()) {
-                lesson.setTimeslot(null);
-                lesson.setRoom(null);
-            }
-        });
-
-        return schedule;
-    }
-
-    /**
-     * Private helper method to load schedule data from database.
-     * Extracts common data loading logic to avoid code duplication.
-     *
-     * @param scheduleId the schedule identifier
-     * @return DanceSchedule with all data loaded from database
-     */
-    private DanceSchedule loadScheduleFromDatabase(Long scheduleId) {
-        log.info("Loading problem data from database for schedule ID: {}", scheduleId);
-
-        // Load all problem facts (immutable data)
-        List<Timeslot> timeslots = timeslotRepository.findAll();
-        List<Room> rooms = roomRepository.findAll();
-        List<Teacher> teachers = teacherRepository.findAll();
-        List<ResourceUnavailability> resourceUnavailabilities = resourceUnavailabilityRepository.findAll();
-
-        // Load only active planning entities for the selected schedule.
-        List<Lesson> lessons = lessonRepository.findByIsActiveTrueAndScheduleId(scheduleId);
-
-
-        log.info("Loaded {} timeslots, {} rooms, {} teachers, {} lessons",
-            timeslots.size(), rooms.size(), teachers.size(), lessons.size());
-
-        // Create and return the planning problem
-        return new DanceSchedule(
-            scheduleId,
-            timeslots,
-            rooms,
-            teachers,
-            resourceUnavailabilities,
-            lessons
-        );
-    }
-    
     /**
      * Gets the current status of the solver for a given schedule.
      *
@@ -170,7 +107,7 @@ public class SolverService {
     public HardSoftScore getStoredScore(Long scheduleId) {
         return scheduleMetadataRepository.findById(scheduleId)
             .map(ScheduleMetadata::getSolverScore)
-            .filter(score -> score != null && !score.isBlank())
+            .filter(score -> !score.isBlank())
             .map(score -> {
                 try {
                     return HardSoftScore.parseScore(score);

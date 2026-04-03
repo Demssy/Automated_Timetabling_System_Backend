@@ -1,20 +1,16 @@
 package com.timetable.backend.controller;
 
 import com.timetable.backend.domain.dto.CreateTeacherRequest;
+import com.timetable.backend.domain.dto.StudentAvailabilityResponse;
+import com.timetable.backend.domain.dto.StudentResponse;
 import com.timetable.backend.domain.dto.TeacherResponse;
 import com.timetable.backend.service.TeacherService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -25,8 +21,12 @@ public class TeacherController {
 
     private final TeacherService teacherService;
 
+    // ──────────────────────────────────────────────────────────
+    // Admin CRUD
+    // ──────────────────────────────────────────────────────────
+
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STUDENT', 'TEACHER')")
     public ResponseEntity<List<TeacherResponse>> getAllTeachers() {
         return ResponseEntity.ok(teacherService.getAllTeachers());
     }
@@ -57,4 +57,40 @@ public class TeacherController {
     public ResponseEntity<TeacherResponse> createTeacher(@RequestBody @Valid CreateTeacherRequest request) {
         return ResponseEntity.ok(teacherService.createTeacher(request));
     }
+
+    // ──────────────────────────────────────────────────────────
+    // Teacher self-service: private lesson student pool
+    // ──────────────────────────────────────────────────────────
+
+    /**
+     * Returns the list of students who have selected the authenticated teacher
+     * for private lessons.
+     */
+    @GetMapping("/me/students")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<List<StudentResponse>> getMyStudents(Authentication authentication) {
+        String email = authentication.getName();
+        return ResponseEntity.ok(teacherService.getMyStudents(email));
+    }
+
+    /**
+     * GET /api/teachers/me/students/{studentId}/availability
+     *
+     * Returns the weekly availability of a student who has selected
+     * the authenticated teacher for private lessons.
+     *
+     * Security: only accessible to the TEACHER whose student list contains studentId.
+     * Returns 403 if student is not in the teacher's pool, 404 if student not found.
+     */
+    @GetMapping("/me/students/{studentId}/availability")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<StudentAvailabilityResponse> getStudentAvailability(
+            @PathVariable Long studentId,
+            Authentication authentication) {
+        String email = authentication.getName();
+        return ResponseEntity.ok(teacherService.getStudentAvailability(email, studentId));
+    }
+
+
 }
+

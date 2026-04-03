@@ -126,7 +126,7 @@ public class SolverController {
      * @return the current solution from database
      */
     @GetMapping("/solution/{scheduleId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STUDENT', 'TEACHER')")
     public ResponseEntity<ScheduleSolutionResponse> getSolution(@PathVariable Long scheduleId) {
         log.info("Retrieving current solution snapshot from database for schedule ID: {}", scheduleId);
 

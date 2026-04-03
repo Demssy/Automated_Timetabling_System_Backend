@@ -1,5 +1,7 @@
 package com.timetable.backend.domain.dto;
 
+import java.util.List;
+
 /**
  * DTO for authenticated user information.
  * Contains common user fields and role information.
@@ -16,6 +18,8 @@ public record UserResponse(
     String email,
     String fullName,
     String role,
-    boolean isActive
+    boolean isActive,
+    List<WeeklyAvailabilityDTO> weeklyAvailabilities,
+    List<ResourceUnavailabilityDTO> oneTimeUnavailabilities
 ) {}
 

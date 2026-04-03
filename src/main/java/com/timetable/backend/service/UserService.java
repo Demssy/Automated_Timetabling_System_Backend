@@ -3,9 +3,13 @@ package com.timetable.backend.service;
 import com.timetable.backend.domain.dto.UpdateUserRequest;
 import com.timetable.backend.domain.dto.UserResponse;
 import com.timetable.backend.domain.model.AbstractUser;
+import com.timetable.backend.domain.model.ResourceUnavailability;
 import com.timetable.backend.domain.model.Role;
+import com.timetable.backend.domain.model.WeeklyAvailability;
+import com.timetable.backend.domain.repository.ResourceUnavailabilityRepository;
 import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.UserRepository;
+import com.timetable.backend.domain.repository.WeeklyAvailabilityRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,9 +17,14 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
+import java.util.Map;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
-
+import com.timetable.backend.domain.dto.UpdateAvailabilityRequest;
+import com.timetable.backend.domain.dto.ResourceUnavailabilityDTO;
+import com.timetable.backend.domain.dto.WeeklyAvailabilityDTO;
+import java.util.stream.Collectors;
 /**
  * Service for managing user-related operations.
  */
@@ -26,6 +35,10 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final WeeklyAvailabilityService weeklyAvailabilityService;
+    private final ResourceUnavailabilityService resourceUnavailabilityService;
+    private final WeeklyAvailabilityRepository weeklyAvailabilityRepository;
+    private final ResourceUnavailabilityRepository resourceUnavailabilityRepository;
 
     /**
      * Retrieves user information by email (username).
@@ -44,10 +57,38 @@ public class UserService {
         return mapToUserResponse(user);
     }
 
+    @Transactional
+    public UserResponse updateUserAvailability(Long id, UpdateAvailabilityRequest request) {
+        log.debug("Updating availability for user id: {}", id);
+
+        if (!userRepository.existsById(id)) {
+            throw new EntityNotFoundException("User not found with id: " + id);
+        }
+
+        weeklyAvailabilityService.updateUserSchedule(id, request.weeklyAvailabilities());
+        resourceUnavailabilityService.updateUserExceptions(id, request.oneTimeUnavailabilities());
+
+        return getUserById(id); // Return updated profile
+    }
+
     @Transactional(readOnly = true)
     public List<UserResponse> getAllUsers() {
-        return userRepository.findAll().stream()
-                .map(this::mapToUserResponse)
+        List<AbstractUser> users = userRepository.findAll();
+
+        Map<Long, List<WeeklyAvailabilityDTO>> weeklyByUserId = weeklyAvailabilityRepository.findAll().stream()
+                .collect(Collectors.groupingBy(
+                        availability -> availability.getUser().getId(),
+                        Collectors.mapping(this::mapWeeklyAvailabilityToDTO, Collectors.toList())
+                ));
+
+        Map<Long, List<ResourceUnavailabilityDTO>> oneTimeByUserId = resourceUnavailabilityRepository.findAll().stream()
+                .collect(Collectors.groupingBy(
+                        unavailability -> unavailability.getUser().getId(),
+                        Collectors.mapping(this::mapResourceUnavailabilityToDTO, Collectors.toList())
+                ));
+
+        return users.stream()
+                .map(user -> mapToUserResponse(user, weeklyByUserId, oneTimeByUserId))
                 .toList();
     }
 
@@ -112,12 +153,56 @@ public class UserService {
     }
 
     private UserResponse mapToUserResponse(AbstractUser user) {
+        List<WeeklyAvailabilityDTO> weekly = weeklyAvailabilityService.getByUserId(user.getId());
+        List<ResourceUnavailabilityDTO> exceptions = resourceUnavailabilityService.getByUserId(user.getId());
+
+        return buildUserResponse(user, weekly, exceptions);
+    }
+
+    private UserResponse mapToUserResponse(
+            AbstractUser user,
+            Map<Long, List<WeeklyAvailabilityDTO>> weeklyByUserId,
+            Map<Long, List<ResourceUnavailabilityDTO>> oneTimeByUserId
+    ) {
+        List<WeeklyAvailabilityDTO> weekly = weeklyByUserId.getOrDefault(user.getId(), Collections.emptyList());
+        List<ResourceUnavailabilityDTO> exceptions = oneTimeByUserId.getOrDefault(user.getId(), Collections.emptyList());
+
+        return buildUserResponse(user, weekly, exceptions);
+    }
+
+    private UserResponse buildUserResponse(
+            AbstractUser user,
+            List<WeeklyAvailabilityDTO> weekly,
+            List<ResourceUnavailabilityDTO> exceptions
+    ) {
+
         return new UserResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getFullName(),
                 user.getRole().getName(),
-                user.isActive()
+                user.isActive(),
+                weekly,      // NEW
+                exceptions   // NEW
+        );
+    }
+
+    private WeeklyAvailabilityDTO mapWeeklyAvailabilityToDTO(WeeklyAvailability entity) {
+        return new WeeklyAvailabilityDTO(
+                entity.getId(),
+                entity.getDayOfWeek(),
+                entity.getStartTime(),
+                entity.getEndTime()
+        );
+    }
+
+    private ResourceUnavailabilityDTO mapResourceUnavailabilityToDTO(ResourceUnavailability entity) {
+        return new ResourceUnavailabilityDTO(
+                entity.getId(),
+                entity.getDate(),
+                entity.getStartTime(),
+                entity.getEndTime(),
+                entity.getReason()
         );
     }
 }

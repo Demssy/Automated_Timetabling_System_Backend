@@ -5,6 +5,8 @@ import jakarta.validation.constraints.Past;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "students")
@@ -27,10 +29,11 @@ public class Student extends AbstractUser {
     @Column(name = "parent_contact")
     private String parentContact;
 
-    public Student(Long id, String email, String passwordHash, String fullName, Role role, boolean isActive, LocalDate birthDate, DanceLevel danceLevel, String parentContact) {
-        super(id, email, passwordHash, fullName, role, isActive);
-        this.birthDate = birthDate;
-        this.danceLevel = danceLevel;
-        this.parentContact = parentContact;
-    }
+
+    @ManyToMany(mappedBy = "privateStudents", fetch = FetchType.LAZY)
+    @ToString.Exclude
+    private Set<Teacher> preferredTeachers = new HashSet<>();
+
 }
+
+

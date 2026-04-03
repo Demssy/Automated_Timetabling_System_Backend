@@ -16,6 +16,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.web.bind.annotation.*;
 
+import static org.springframework.web.bind.annotation.RequestMethod.GET;
+import static org.springframework.web.bind.annotation.RequestMethod.POST;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -56,7 +59,7 @@ public class AuthController {
         return getUserResponseWithCookie(token, userResponse);
     }
 
-    @GetMapping("/logout")
+    @RequestMapping(value = "/logout", method = {GET, POST})
     public ResponseEntity<Void> logout() {
 
         // Clear JWT cookie by setting maxAge to 0

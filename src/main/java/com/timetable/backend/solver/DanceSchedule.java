@@ -7,13 +7,10 @@ import ai.timefold.solver.core.api.domain.solution.ProblemFactCollectionProperty
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
-import com.timetable.backend.domain.model.Lesson;
-import com.timetable.backend.domain.model.ResourceUnavailability;
-import com.timetable.backend.domain.model.Room;
-import com.timetable.backend.domain.model.Teacher;
-import com.timetable.backend.domain.model.Timeslot;
+import com.timetable.backend.domain.model.*;
 import lombok.*;
 import lombok.NoArgsConstructor;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -28,7 +25,6 @@ import java.util.List;
 @RequiredArgsConstructor
 @ToString
 @AllArgsConstructor
-
 public class DanceSchedule {
 
     @PlanningId
@@ -47,6 +43,13 @@ public class DanceSchedule {
 
     @ProblemFactCollectionProperty
     private final List<ResourceUnavailability> resourceUnavailabilityList;
+
+    // NEW: Added weekly availability facts
+    @ProblemFactCollectionProperty
+    private final List<WeeklyAvailability> weeklyAvailabilityList;
+
+    @ProblemFactCollectionProperty
+    private final List<LocalDate> scheduleDateAnchorList;
 
     @PlanningEntityCollectionProperty
     private final List<Lesson> lessonList;

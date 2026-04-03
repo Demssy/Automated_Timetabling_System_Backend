@@ -34,8 +34,13 @@ public class Lesson {
     private Teacher teacher;
 
     @ManyToOne
-    @JoinColumn(name = "dance_group_id", nullable = false)
+    @JoinColumn(name = "dance_group_id", nullable = true)
     private DanceGroup danceGroup;
+
+    /** Assigned only for private lessons ({@code isPrivate = true}). Null for group lessons. */
+    @ManyToOne
+    @JoinColumn(name = "student_id", nullable = true)
+    private Student student;
 
     @PlanningVariable(valueRangeProviderRefs = "timeslotRange")
     @ManyToOne
@@ -65,11 +70,21 @@ public class Lesson {
     @Column(name = "version")
     private Integer version;
 
+    /** Convenience constructor for group lessons (student == null). */
     public Lesson(Teacher teacher, DanceGroup danceGroup, int durationMinutes, boolean isPrivate, boolean isActive) {
         this.teacher = teacher;
         this.danceGroup = danceGroup;
         this.durationMinutes = durationMinutes;
         this.isPrivate = isPrivate;
+        this.isActive = isActive;
+    }
+
+    /** Convenience constructor for private lessons (danceGroup == null). */
+    public Lesson(Teacher teacher, Student student, int durationMinutes, boolean isActive) {
+        this.teacher = teacher;
+        this.student = student;
+        this.durationMinutes = durationMinutes;
+        this.isPrivate = true;
         this.isActive = isActive;
     }
 }

@@ -19,8 +19,9 @@ public interface TeacherMapper {
      * Updates teacher-specific fields only.
      * user, id, and danceStyles are handled separately in the service.
      */
-    @Mapping(target = "id",         ignore = true)
-    @Mapping(target = "user",       ignore = true)
-    @Mapping(target = "danceStyles", ignore = true)
+    @Mapping(target = "id",             ignore = true)
+    @Mapping(target = "user",           ignore = true)
+    @Mapping(target = "danceStyles",    ignore = true)
+    @Mapping(target = "privateStudents", ignore = true)
     void updateTeacherFromDto(UpdateTeacherRequest dto, @MappingTarget Teacher entity);
 }

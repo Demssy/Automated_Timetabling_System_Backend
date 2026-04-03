@@ -46,4 +46,17 @@ public class Teacher {
     )
     private Set<DanceStyle> danceStyles = new HashSet<>();
 
+    /**
+     * Pool of students who have selected this teacher for private lessons.
+     * Owning side of the ManyToMany relationship — manages the teacher_students join table.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "teacher_students",
+        joinColumns = @JoinColumn(name = "teacher_id"),
+        inverseJoinColumns = @JoinColumn(name = "student_id")
+    )
+    @ToString.Exclude
+    private Set<Student> privateStudents = new HashSet<>();
+
 }

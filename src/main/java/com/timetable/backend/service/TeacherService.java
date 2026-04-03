@@ -1,8 +1,11 @@
 package com.timetable.backend.service;
-
 import com.timetable.backend.domain.dto.CreateTeacherRequest;
+import com.timetable.backend.domain.dto.StudentAvailabilityResponse;
+import com.timetable.backend.domain.dto.StudentResponse;
 import com.timetable.backend.domain.dto.TeacherResponse;
 import com.timetable.backend.domain.dto.UpdateTeacherRequest;
+import com.timetable.backend.domain.dto.WeeklyAvailabilityDTO;
+import com.timetable.backend.domain.mapper.StudentMapper;
 import com.timetable.backend.domain.mapper.TeacherMapper;
 import com.timetable.backend.domain.model.AbstractUser;
 import com.timetable.backend.domain.model.DanceStyle;
@@ -12,52 +15,47 @@ import com.timetable.backend.domain.repository.DanceStyleRepository;
 import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.UserRepository;
+import com.timetable.backend.domain.repository.WeeklyAvailabilityRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.web.server.ResponseStatusException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
 @Service
 @RequiredArgsConstructor
 public class TeacherService {
-
     private final TeacherRepository teacherRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final DanceStyleRepository danceStyleRepository;
+    private final WeeklyAvailabilityRepository weeklyAvailabilityRepository;
     private final TeacherMapper teacherMapper;
-
+    private final StudentMapper studentMapper;
     @Transactional(readOnly = true)
     public List<TeacherResponse> getAllTeachers() {
         return teacherRepository.findAll().stream()
                 .map(teacherMapper::toTeacherResponse)
                 .toList();
     }
-
     @Transactional(readOnly = true)
     public TeacherResponse getTeacherById(Long id) {
         Teacher teacher = teacherRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found with id: " + id));
         return teacherMapper.toTeacherResponse(teacher);
     }
-
     @Transactional
     public TeacherResponse updateTeacher(Long id, UpdateTeacherRequest request) {
         Teacher teacher = teacherRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found with id: " + id));
-
-        // fullName lives in the AbstractUser record — update it there
         if (request.fullName() != null && teacher.getUser() != null) {
             teacher.getUser().setFullName(request.fullName());
             userRepository.save(teacher.getUser());
         }
-
         teacher.setMaxDailyHours(request.maxDailyHours());
         teacher.setColorCode(request.colorCode());
-
         if (request.qualifiedStyleIds() != null) {
             Set<Long> requestedStyleIds = new HashSet<>(request.qualifiedStyleIds());
             List<DanceStyle> styles = danceStyleRepository.findAllById(requestedStyleIds);
@@ -66,10 +64,8 @@ public class TeacherService {
             }
             teacher.setDanceStyles(new HashSet<>(styles));
         }
-
         return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
     }
-
     @Transactional
     public void deleteTeacher(Long id) {
         if (!teacherRepository.existsById(id)) {
@@ -77,54 +73,21 @@ public class TeacherService {
         }
         teacherRepository.deleteById(id);
     }
-
-    /**
-     * Promotes an existing user to a Teacher.
-     * <p>
-     * Since {@link Teacher} is now a standalone entity (not extending {@link AbstractUser}),
-     * promotion works as follows:
-     * <ol>
-     *   <li>Load the existing {@link AbstractUser} by {@code userId}.</li>
-     *   <li>Ensure the user is not already promoted (no Teacher record with the same id).</li>
-     *   <li>Update the user's role to {@code TEACHER} in the {@code users} table.</li>
-     *   <li>Create a new {@link Teacher} row with {@code id = userId} and the provided settings.</li>
-     * </ol>
-     *
-     * @param request DTO with userId, maxDailyHours, colorCode, qualifiedStyleIds.
-     * @return the created {@link TeacherResponse}.
-     * @throws IllegalArgumentException if the user is not found, is already a Teacher,
-     *                                  or any dance style ID is invalid.
-     */
     @Transactional
     public TeacherResponse createTeacher(CreateTeacherRequest request) {
-        // 1. Verify the source user exists
         AbstractUser user = userRepository.findById(request.userId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "User not found with id: " + request.userId()));
-
-        // 2. Guard: prevent double-promotion
+                .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + request.userId()));
         if (teacherRepository.existsById(request.userId())) {
-            throw new IllegalArgumentException(
-                    "User with id " + request.userId() + " is already a Teacher");
+            throw new IllegalArgumentException("User with id " + request.userId() + " is already a Teacher");
         }
-
-        // 3. Resolve (or create) the TEACHER role and update the user's role
         Role teacherRole = roleRepository.findByName("TEACHER")
                 .orElseGet(() -> roleRepository.save(new Role(null, "TEACHER")));
         user.setRole(teacherRole);
-        // Use the returned managed instance to avoid a detached-entity conflict on merge
         AbstractUser managedUser = userRepository.saveAndFlush(user);
-
-        // 4. Build the Teacher record — do NOT call setId() manually when using @MapsId,
-        //    Hibernate derives the PK from the associated user automatically.
         Teacher teacher = new Teacher();
         teacher.setUser(managedUser);
-        teacher.setMaxDailyHours(
-                request.maxDailyHours() != null ? request.maxDailyHours() : 8);
-        teacher.setColorCode(
-                request.colorCode() != null ? request.colorCode() : "#000000");
-
-        // 5. Resolve and assign dance styles
+        teacher.setMaxDailyHours(request.maxDailyHours() != null ? request.maxDailyHours() : 8);
+        teacher.setColorCode(request.colorCode() != null ? request.colorCode() : "#000000");
         if (request.qualifiedStyleIds() != null && !request.qualifiedStyleIds().isEmpty()) {
             Set<Long> requestedStyleIds = new HashSet<>(request.qualifiedStyleIds());
             List<DanceStyle> styles = danceStyleRepository.findAllById(requestedStyleIds);
@@ -133,7 +96,64 @@ public class TeacherService {
             }
             teacher.setDanceStyles(new HashSet<>(styles));
         }
-
         return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
+    }
+    @Transactional(readOnly = true)
+    public List<StudentResponse> getMyStudents(String teacherEmail) {
+        Teacher teacher = resolveTeacherByEmail(teacherEmail);
+        return teacher.getPrivateStudents().stream()
+                .map(studentMapper::toStudentResponse)
+                .toList();
+    }
+    @Transactional(readOnly = true)
+    public List<StudentResponse> getStudentsForTeacher(Long teacherId) {
+        Teacher teacher = teacherRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found with id: " + teacherId));
+        return teacher.getPrivateStudents().stream()
+                .map(studentMapper::toStudentResponse)
+                .toList();
+    }
+    private Teacher resolveTeacherByEmail(String email) {
+        AbstractUser user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));
+        return teacherRepository.findById(user.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Teacher profile not found for: " + email));
+    }
+
+    /**
+     * Returns the weekly availability of a student, accessible only to the teacher
+     * who has that student in their private lesson pool.
+     *
+     * @param teacherEmail email of the authenticated teacher (from JWT principal)
+     * @param studentId    ID of the student whose availability is requested
+     * @return StudentAvailabilityResponse with list of WeeklyAvailabilityDTO
+     * @throws ResponseStatusException 403 if student is not in the teacher's pool
+     * @throws ResponseStatusException 404 if the student does not exist
+     */
+    @Transactional(readOnly = true)
+    public StudentAvailabilityResponse getStudentAvailability(String teacherEmail, Long studentId) {
+        Teacher teacher = resolveTeacherByEmail(teacherEmail);
+
+        // Security check: ensure studentId belongs to this teacher's private pool
+        if (!teacherRepository.isStudentOfTeacher(teacher.getId(), studentId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Student with id " + studentId + " is not in your private lesson pool");
+        }
+
+        // Verify student exists (repository query returns empty list if not, but explicit check is cleaner)
+        if (!userRepository.existsById(studentId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Student not found with id: " + studentId);
+        }
+
+        List<WeeklyAvailabilityDTO> dtos = weeklyAvailabilityRepository.findByUserId(studentId)
+                .stream()
+                .map(w -> new WeeklyAvailabilityDTO(
+                        w.getId(),
+                        w.getDayOfWeek(),
+                        w.getStartTime(),
+                        w.getEndTime()))
+                .toList();
+
+        return new StudentAvailabilityResponse(dtos);
     }
 }

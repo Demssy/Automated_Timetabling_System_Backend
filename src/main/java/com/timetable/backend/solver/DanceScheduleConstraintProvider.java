@@ -8,8 +8,10 @@ import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 import ai.timefold.solver.core.api.score.stream.Joiners;
 import com.timetable.backend.domain.model.Lesson;
 import com.timetable.backend.domain.model.ResourceUnavailability;
-
+import com.timetable.backend.domain.model.WeeklyAvailability;
+import java.time.DayOfWeek;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 /**
@@ -21,7 +23,11 @@ import java.time.LocalTime;
  * - Teacher conflict: A teacher cannot teach two lessons at the same time
  * - Teacher availability: Lessons cannot be scheduled when teacher is unavailable
  *
- * Soft Constraints (should be optimized):
+ * <p><b>Null-safety note:</b> Since {@code Lesson.danceGroup} can be {@code null}
+ * for private lessons, all constraints that would access {@code lesson.getDanceGroup()}
+ * must guard with {@code .filter(lesson -> lesson.getDanceGroup() != null)}.
+ * Currently no constraint accesses {@code danceGroup} directly, so the solver
+ * is already null-safe with respect to this field.</p>
  * - Minimize gaps: Minimize time gaps between lessons for the same teacher on the same day
  * - Prime time reward: Encourage scheduling lessons during peak hours (16:00-21:00)
  * - Load balancing: Distribute lessons fairly among teachers
@@ -31,15 +37,18 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     @Override
     public Constraint[] defineConstraints(ConstraintFactory constraintFactory) {
         return new Constraint[] {
-            // Hard constraints
-            roomConflict(constraintFactory),
-            teacherConflict(constraintFactory),
-            teacherAvailability(constraintFactory),
+                // Hard constraints
+                roomConflict(constraintFactory),
+                teacherConflict(constraintFactory),
 
-            // Soft constraints
-            minimizeTeacherGaps(constraintFactory),
-            rewardPrimeTime(constraintFactory),
-            balanceTeacherLoad(constraintFactory)
+                // NEW: Updated availability constraints
+                teacherOutsideWeeklyAvailability(constraintFactory),
+                teacherOneTimeUnavailability(constraintFactory),
+
+                // Soft constraints
+                minimizeTeacherGaps(constraintFactory),
+                rewardPrimeTime(constraintFactory),
+                balanceTeacherLoad(constraintFactory)
         };
     }
 
@@ -112,27 +121,61 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     }
 
     /**
-     * HARD CONSTRAINT 3: Teacher Availability
-     *
-     * A lesson cannot be scheduled when the teacher is unavailable.
-     * This checks against the ResourceUnavailability table.
-     *
-     * @param constraintFactory the factory to create constraints
-     * @return teacher availability constraint
+     * HARD CONSTRAINT: Teacher Weekly Availability
+     * Penalize if a lesson is scheduled outside the teacher's declared weekly available hours.
      */
-    Constraint teacherAvailability(ConstraintFactory constraintFactory) {
+    Constraint teacherOutsideWeeklyAvailability(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEach(Lesson.class)
-                .join(ResourceUnavailability.class,
-                        // Same teacher
-                        Joiners.equal(Lesson::getTeacher, ResourceUnavailability::getTeacher),
-                        // Same timeslot
-                        Joiners.equal(Lesson::getTimeslot, ResourceUnavailability::getTimeslot)
+                .filter(lesson -> lesson.getTimeslot() != null)
+                // We penalize if there does NOT exist a weekly availability window that fully contains the lesson
+                .ifNotExists(WeeklyAvailability.class,
+                        // Match the teacher
+                        Joiners.equal(Lesson::getTeacher, WeeklyAvailability::getUser),
+                        // Match the day of the week
+                        Joiners.equal(lesson -> lesson.getTimeslot().getDayOfWeek(), WeeklyAvailability::getDayOfWeek),
+                        // Ensure the availability window fully covers the timeslot
+                        Joiners.filtering((lesson, availability) ->
+                                !lesson.getTimeslot().getStartTime().isBefore(availability.getStartTime()) &&
+                                        !lesson.getTimeslot().getEndTime().isAfter(availability.getEndTime())
+                        )
                 )
                 .penalize(HardSoftScore.ONE_HARD)
-                .asConstraint("Teacher unavailability");
+                .asConstraint("Teacher scheduled outside weekly availability");
+    }
+    /**
+     * HARD CONSTRAINT: Teacher One-Time Unavailability (Exceptions)
+     * Penalize if a lesson overlaps with a specific requested day off.
+     */
+    Constraint teacherOneTimeUnavailability(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEach(Lesson.class)
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .join(ResourceUnavailability.class,
+                        Joiners.equal(Lesson::getTeacher, ResourceUnavailability::getUser)
+                )
+                .join(LocalDate.class)
+                .filter((lesson, unavail, scheduleStartDate) -> {
+                    LocalDate lessonDate = mapDayOfWeekToDate(scheduleStartDate, lesson.getTimeslot().getDayOfWeek());
+                    if (!lessonDate.equals(unavail.getDate())) {
+                        return false;
+                    }
+
+                    // Time overlap logic: StartA < EndB AND EndA > StartB
+                    return lesson.getTimeslot().getStartTime().isBefore(unavail.getEndTime()) &&
+                            lesson.getTimeslot().getEndTime().isAfter(unavail.getStartTime());
+                })
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Teacher one-time unavailability conflict");
     }
 
+    private LocalDate mapDayOfWeekToDate(LocalDate scheduleStartDate, DayOfWeek dayOfWeek) {
+        int shift = dayOfWeek.getValue() - scheduleStartDate.getDayOfWeek().getValue();
+        if (shift < 0) {
+            shift += 7;
+        }
+        return scheduleStartDate.plusDays(shift);
+    }
     /**
      * SOFT CONSTRAINT: Minimize Teacher Gaps
      *
