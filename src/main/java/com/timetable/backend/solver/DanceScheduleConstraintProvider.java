@@ -6,8 +6,10 @@ import ai.timefold.solver.core.api.score.stream.ConstraintCollectors;
 import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 import ai.timefold.solver.core.api.score.stream.Joiners;
+import com.timetable.backend.config.SolverWeightsConfig;
 import com.timetable.backend.domain.model.Lesson;
 import com.timetable.backend.domain.model.ResourceUnavailability;
+import com.timetable.backend.domain.model.Student;
 import com.timetable.backend.domain.model.WeeklyAvailability;
 import java.time.DayOfWeek;
 import java.time.Duration;
@@ -33,16 +35,51 @@ import java.time.LocalTime;
  * - Max 4 private lessons per timeslot (single room capacity)
  * - No private lessons during group lesson timeslots
  * - Teacher conflict: A teacher cannot teach two lessons at the same time
+ * - Max 6 lessons per teacher per day (physical workload limit)
  * - Teacher availability: Lessons cannot be scheduled when teacher is unavailable
  * - Student matching: subscription, availability, no double-booking
+ * - Student lessons per day must not exceed their availability windows for that day
  *
  * Soft Constraints (optimized):
  * - Reward student assignment (matchmaking incentive)
- * - Minimize gaps: Minimize time gaps between lessons for the same teacher on the same day
- * - Prime time reward: Encourage scheduling lessons during peak hours (16:00-21:00)
+ * - Minimize gaps: Penalize idle gaps > 15 min between teacher lessons on same day
+ * - Prime time reward: Encourage scheduling during peak hours 16:00-21:00 (+10 per lesson)
  * - Load balancing: Distribute lessons fairly among teachers
  */
 public class DanceScheduleConstraintProvider implements ConstraintProvider {
+
+    /**
+     * Gaps up to this many minutes are considered a normal break between lessons
+     * and are NOT penalized. Only gaps exceeding this threshold represent real idle time.
+     * Value is loaded from {@link SolverWeightsConfig#getTeacherGapThresholdMinutes()}.
+     */
+    private final long acceptableTeacherGapMinutes;
+    private final SolverWeightsConfig weights;
+
+    /**
+     * No-arg constructor required by Timefold 1.6.0, which instantiates
+     * {@code ConstraintProvider} via reflection ({@code newInstance()}) and does
+     * NOT support Spring DI here. Delegates to the primary constructor using
+     * the Spring-managed {@link SolverWeightsConfig#getInstance()} holder,
+     * which is populated via {@code @PostConstruct} before the solver starts.
+     *
+     * <p>Falls back to a default instance with standard values when called
+     * outside of a Spring context (e.g., unit tests).</p>
+     */
+    public DanceScheduleConstraintProvider() {
+        this(SolverWeightsConfig.getInstance());
+    }
+
+    /**
+     * Primary constructor. Used directly in tests:
+     * {@code new DanceScheduleConstraintProvider(new SolverWeightsConfig())}.
+     *
+     * @param weights externalized constraint weights and thresholds
+     */
+    public DanceScheduleConstraintProvider(SolverWeightsConfig weights) {
+        this.weights = weights;
+        this.acceptableTeacherGapMinutes = weights.getTeacherGapThresholdMinutes();
+    }
 
     @Override
     public Constraint[] defineConstraints(ConstraintFactory constraintFactory) {
@@ -53,6 +90,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
 
                 // Hard constraints — teacher
                 teacherConflict(constraintFactory),
+                maxTeacherLessonsPerDay(constraintFactory),
 
                 // Teacher availability constraints
                 teacherOutsideWeeklyAvailability(constraintFactory),
@@ -64,6 +102,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 studentConflict(constraintFactory),
                 studentOutsideWeeklyAvailability(constraintFactory),
                 studentOneTimeUnavailability(constraintFactory),
+                studentLessonsPerDayMatchAvailabilityWindows(constraintFactory),
 
                 // Soft constraints
                 rewardStudentAssignment(constraintFactory),
@@ -120,13 +159,20 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      *
      * A teacher cannot teach two lessons at the same time.
      *
+     * <p><b>Null-safety:</b> Both streams explicitly filter {@code timeslot != null}.
+     * Without this, two unassigned private lessons from the same teacher (both timeslot=null)
+     * would match via {@code Joiners.equal(Lesson::getTimeslot)} because {@code null == null},
+     * producing a <em>spurious hard violation</em> that severely misleads the solver.</p>
+     *
      * @param constraintFactory the factory to create constraints
      * @return teacher conflict constraint
      */
     Constraint teacherConflict(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
+                                .filter(lesson -> lesson.getTimeslot() != null),
                         // Different lessons
                         Joiners.lessThan(Lesson::getId),
                         // Same teacher
@@ -139,8 +185,35 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     }
 
     /**
+     * HARD CONSTRAINT: Max 6 Lessons Per Teacher Per Day
+     *
+     * A teacher cannot physically conduct more than 6 lessons in a single day.
+     * 6 × 60 min lesson + 5 × 15 min break = 6h 15min — a realistic daily maximum.
+     *
+     * <p>Uses a local composite-key record {@code TeacherDay(teacherId, day)} to group
+     * by (teacher, dayOfWeek) with a single-key {@code groupBy}, avoiding the
+     * 3-argument groupBy API that has known issues in Timefold 1.6.0.</p>
+     */
+    Constraint maxTeacherLessonsPerDay(ConstraintFactory constraintFactory) {
+        record TeacherDay(Long teacherId, DayOfWeek day) {}
+
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .groupBy(
+                    lesson -> new TeacherDay(
+                        lesson.getTeacher().getId(),
+                        lesson.getTimeslot().getDayOfWeek()
+                    ),
+                    ConstraintCollectors.count()
+                )
+                .filter((key, count) -> count > weights.getMaxTeacherLessonsPerDay())
+                .penalize(HardSoftScore.ONE_HARD, (key, count) -> count - weights.getMaxTeacherLessonsPerDay())
+                .asConstraint("Max 6 lessons per teacher per day");
+    }
+
+    /**
      * HARD CONSTRAINT: Teacher Weekly Availability
-     * Penalize if a lesson is scheduled outside the teacher's declared weekly available hours.
      */
     Constraint teacherOutsideWeeklyAvailability(ConstraintFactory constraintFactory) {
         return constraintFactory
@@ -287,66 +360,72 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.isPrivate() && lesson.getStudent() != null)
-                .reward(HardSoftScore.ONE_SOFT)
+                .reward(HardSoftScore.ofSoft(weights.getRewardStudentAssignment()))
                 .asConstraint("Reward for assigning a student to a private lesson");
     }
 
     /**
      * SOFT CONSTRAINT: Minimize Teacher Gaps
+     *
+     * Penalizes idle gaps between a teacher's lessons on the same day,
+     * but ONLY when the gap exceeds {@value ACCEPTABLE_TEACHER_GAP_MINUTES} minutes.
+     *
+     * <p>A gap of 10–15 minutes is a normal break the teacher needs between students.
+     * Only gaps representing real idle time (e.g. 2-hour hole mid-day) are penalized.</p>
+     *
+     * <p>Penalty: {@code (gapMinutes / 60) + 1} for gaps exceeding the threshold.</p>
      */
     Constraint minimizeTeacherGaps(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
-                        // Different lessons
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
+                                .filter(lesson -> lesson.getTimeslot() != null),
                         Joiners.lessThan(Lesson::getId),
-                        // Same teacher
-                        Joiners.equal(Lesson::getTeacher)
-
+                        Joiners.equal(Lesson::getTeacher),
+                        Joiners.equal(lesson -> lesson.getTimeslot().getDayOfWeek())
                 )
                 .filter((lesson1, lesson2) -> {
-
-                    if (lesson1.getTimeslot() == null || lesson2.getTimeslot() == null) {
-                        return false;
-                    }
-
-                    if (lesson1.getTimeslot().getDayOfWeek() != lesson2.getTimeslot().getDayOfWeek()) {
-                        return false;
-                    }
-
-                    LocalTime end1 = lesson1.getTimeslot().getEndTime();
+                    LocalTime end1   = lesson1.getTimeslot().getEndTime();
                     LocalTime start2 = lesson2.getTimeslot().getStartTime();
-                    LocalTime end2 = lesson2.getTimeslot().getEndTime();
+                    LocalTime end2   = lesson2.getTimeslot().getEndTime();
                     LocalTime start1 = lesson1.getTimeslot().getStartTime();
 
-                    // 3. Gap exists if lesson1 ends before lesson2 starts (and vice versa)
-                    return (end1.isBefore(start2) || end2.isBefore(start1));
+                    long gapMinutes;
+                    if (end1.isBefore(start2)) {
+                        gapMinutes = Duration.between(end1, start2).toMinutes();
+                    } else if (end2.isBefore(start1)) {
+                        gapMinutes = Duration.between(end2, start1).toMinutes();
+                    } else {
+                        return false; // adjacent or overlapping — no gap to penalize
+                    }
+                    // Accept short breaks; penalize only real idle time
+                    return gapMinutes > acceptableTeacherGapMinutes;
                 })
                 .penalize(HardSoftScore.ONE_SOFT, (lesson1, lesson2) -> {
-                    LocalTime end1 = lesson1.getTimeslot().getEndTime();
+                    LocalTime end1   = lesson1.getTimeslot().getEndTime();
                     LocalTime start2 = lesson2.getTimeslot().getStartTime();
-                    LocalTime end2 = lesson2.getTimeslot().getEndTime();
+                    LocalTime end2   = lesson2.getTimeslot().getEndTime();
                     LocalTime start1 = lesson1.getTimeslot().getStartTime();
 
-                    if (end1.isBefore(start2)) {
-                        return (int) Duration.between(end1, start2).toMinutes();
-                    } else {
-                        return (int) Duration.between(end2, start1).toMinutes();
-                    }
+                    long gapMinutes = end1.isBefore(start2)
+                            ? Duration.between(end1, start2).toMinutes()
+                            : Duration.between(end2, start1).toMinutes();
+
+                    // Example: 120 min gap → (120/60)+1 = 3 soft penalty
+                    return (int) (gapMinutes / 60) + 1;
                 })
                 .asConstraint("Minimize teacher gaps");
     }
 
     /**
-     * SOFT CONSTRAINT: Prime-Time Reward (EPIC 4 BE-16.2)
+     * SOFT CONSTRAINT: Prime-Time Reward
      *
-     * Encourages scheduling lessons during peak hours (16:00-21:00).
-     * This is when most students prefer to attend classes.
+     * Encourages scheduling lessons during peak hours (16:00–21:00).
      *
-     * Rewards each lesson scheduled in prime time with +1 soft score.
-     *
-     * @param constraintFactory the factory to create constraints
-     * @return prime time reward constraint
+     * <p>Reward is +10 soft per lesson. Previously +1 was negligible (1% of the +100
+     * assignment reward). At +10 it represents 10% and meaningfully steers the solver
+     * toward evening slots preferred by most students.</p>
      */
     Constraint rewardPrimeTime(ConstraintFactory constraintFactory) {
         return constraintFactory
@@ -360,7 +439,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                     return !start.isBefore(LocalTime.of(16, 0)) &&
                            start.isBefore(LocalTime.of(21, 0));
                 })
-                .reward(HardSoftScore.ONE_SOFT)
+                .reward(HardSoftScore.ofSoft(weights.getRewardPrimeTime()))
                 .asConstraint("Reward prime time usage");
     }
 
@@ -384,5 +463,73 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .penalize(HardSoftScore.ONE_SOFT,
                          (teacher, count) -> count * count) // Square penalty for imbalance
                 .asConstraint("Balance teacher workload");
+    }
+
+
+    /**
+     * HARD CONSTRAINT: Student Lessons Per Day Must Not Exceed Availability Windows
+     *
+     * <p>A student's availability windows represent distinct time slots they are willing
+     * to attend on a given day:
+     * <ul>
+     *   <li>1 window on Monday  → max 1 lesson on Monday (hard)</li>
+     *   <li>2 windows on Monday → max 2 lessons on Monday (hard)</li>
+     * </ul>
+     * </p>
+     *
+     * <p><b>Algorithm (two-phase groupBy + join):</b>
+     * <ol>
+     *   <li>Group private lessons by {@code (student, dayOfWeek)} → {@code lessonCount}.</li>
+     *   <li>Join the result with {@code WeeklyAvailability} on same {@code (student, day)}
+     *       to enumerate each availability window as a separate row.</li>
+     *   <li>Re-group by {@code (student, day, lessonCount)} counting how many availability
+     *       windows were joined ({@code windowCount}).</li>
+     *   <li>Penalize by {@code lessonCount - windowCount} whenever lessons exceed windows.</li>
+     * </ol>
+     * </p>
+     *
+     * <p><b>Edge case — 0 windows on a day:</b> the join produces zero rows, so the
+     * re-grouped stream has no entry for that student+day. This case is already caught
+     * by {@code studentOutsideWeeklyAvailability} which requires every lesson to fall
+     * inside at least one window.</p>
+     */
+    Constraint studentLessonsPerDayMatchAvailabilityWindows(ConstraintFactory constraintFactory) {
+        record StudentDay(Student student, DayOfWeek day) {}
+        record StudentDayWithLessonCount(Student student, DayOfWeek day, int lessonCount) {}
+
+        return constraintFactory
+                // Phase 1: count private lessons per (student, day)
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate()
+                        && lesson.getStudent() != null
+                        && lesson.getTimeslot() != null)
+                .groupBy(
+                        lesson -> new StudentDay(
+                                lesson.getStudent(),
+                                lesson.getTimeslot().getDayOfWeek()),
+                        ConstraintCollectors.count()
+                )
+                // BiConstraintStream<StudentDay, Integer lessonCount>
+
+                // Phase 2: join with WeeklyAvailability to enumerate windows for (student, day)
+                .join(WeeklyAvailability.class,
+                        Joiners.equal((key, count) -> key.student(), WeeklyAvailability::getUser),
+                        Joiners.equal((key, count) -> key.day(), WeeklyAvailability::getDayOfWeek)
+                )
+                // TriConstraintStream<StudentDay, Integer lessonCount, WeeklyAvailability>
+
+                // Phase 3: re-group by (student, day, lessonCount), counting availability rows
+                .groupBy(
+                        (key, lessonCount, avail) ->
+                                new StudentDayWithLessonCount(key.student(), key.day(), lessonCount),
+                        ConstraintCollectors.countTri()
+                )
+                // BiConstraintStream<StudentDayWithLessonCount, Integer windowCount>
+
+                // Phase 4: penalize every lesson beyond the window count
+                .filter((sdwc, windowCount) -> sdwc.lessonCount() > windowCount)
+                .penalize(HardSoftScore.ONE_HARD,
+                        (sdwc, windowCount) -> sdwc.lessonCount() - windowCount)
+                .asConstraint("Student lessons per day must not exceed availability windows");
     }
 }

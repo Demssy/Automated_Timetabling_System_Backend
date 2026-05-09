@@ -24,5 +24,20 @@ public interface LessonRepository extends JpaRepository<Lesson, Long> {
 
 	@Query("SELECT l FROM Lesson l WHERE :scheduleId IS NOT NULL AND l.isActive = true")
 	List<Lesson> findByIsActiveTrueAndScheduleId(@Param("scheduleId") Long scheduleId);
+
+	Lesson findById(long id);
+
+	/**
+	 * Finds all active group (non-private) lessons for a given dance group.
+	 * Used to build the weekly schedule shown on the Groups page.
+	 */
+	List<Lesson> findByDanceGroupIdAndIsPrivateFalseAndIsActiveTrue(Long danceGroupId);
+
+	/**
+	 * Finds all active group lessons where a given teacher is assigned.
+	 * Used for the teacher's "My Groups" view.
+	 */
+	@Query("SELECT l FROM Lesson l WHERE l.isPrivate = false AND l.isActive = true AND l.teacher.id = :teacherId")
+	List<Lesson> findActiveGroupLessonsByTeacherId(@Param("teacherId") Long teacherId);
 }
 

@@ -43,7 +43,7 @@ public class DanceSchedule {
     @ProblemFactCollectionProperty
     private final List<ResourceUnavailability> resourceUnavailabilityList;
 
-    // NEW: Added weekly availability facts
+    // Added weekly availability facts
     @ProblemFactCollectionProperty
     private final List<WeeklyAvailability> weeklyAvailabilityList;
 

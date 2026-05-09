@@ -89,6 +89,17 @@ public class SolverProblemLoaderService {
             }
         });
 
+        // Initialize DanceGroup.enrolledStudents lazy collections for all group lessons.
+        // The Solver does NOT use this collection, but Hibernate may try to access the proxy
+        // during deep-clone serialization — initializing it here prevents any potential
+        // LazyInitializationException outside the transaction boundary.
+        lessons.stream()
+            .filter(lesson -> lesson.getDanceGroup() != null)
+            .map(lesson -> lesson.getDanceGroup().getEnrolledStudents())
+            .forEach(enrolledSet -> {
+                if (enrolledSet != null) enrolledSet.size();
+            });
+
         log.info("Loaded {} timeslots, {} teachers, {} lessons, {} students, {} weekly schedules",
                 timeslots.size(), teachers.size(), lessons.size(), students.size(), weeklyAvailabilities.size());
 

@@ -3,15 +3,25 @@ package com.timetable.backend.service;
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.solver.SolverManager;
 import ai.timefold.solver.core.api.solver.SolverStatus;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.timetable.backend.domain.dto.ConstraintViolationSummary;
+import com.timetable.backend.domain.dto.ScoreExplanationResponse;
+import com.timetable.backend.domain.dto.UnmetStudentDTO;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
 import com.timetable.backend.solver.DanceSchedule;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Service for managing Timefold Solver operations.
@@ -28,6 +38,10 @@ public class SolverService {
     private final ScheduledLessonRepository scheduledLessonRepository;
     private final ScheduleMetadataRepository scheduleMetadataRepository;
     private final SolutionPersistenceService persistenceService;
+    private final ObjectMapper objectMapper;
+    private final WeeklyAvailabilityRepository weeklyAvailabilityRepository;
+    private final TeacherRepository teacherRepository;
+
     /**
      * Loads the problem from database and starts solving asynchronously.
      *
@@ -131,5 +145,94 @@ public class SolverService {
         }
         return scheduledLessons.stream()
                 .allMatch(lesson -> lesson.getStatus() == ScheduledLessonStatus.ASSIGNED);
+    }
+
+    /**
+     * Returns the per-constraint score explanation for a solved schedule.
+     * The explanation was computed by {@link SolutionPersistenceService} using
+     * {@code SolutionManager.explain()} and stored as JSON in {@code schedule_metadata}.
+     *
+     * @param scheduleId the schedule identifier
+     * @return {@link ScoreExplanationResponse} with total score and per-constraint breakdown
+     * @throws EntityNotFoundException if no schedule with the given ID exists
+     */
+    @Transactional(readOnly = true)
+    public ScoreExplanationResponse getScoreExplanation(Long scheduleId) {
+        ScheduleMetadata meta = scheduleMetadataRepository.findById(scheduleId)
+            .orElseThrow(() -> new EntityNotFoundException("Schedule not found: " + scheduleId));
+
+        List<ConstraintViolationSummary> violations = parseViolations(meta.getScoreExplanation());
+
+        return new ScoreExplanationResponse(scheduleId, meta.getSolverScore(), violations);
+    }
+
+    /**
+     * Deserializes the stored JSON explanation back into a list of summaries.
+     * Returns an empty list if the column is null, blank, or malformed.
+     */
+    private List<ConstraintViolationSummary> parseViolations(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json,
+                new TypeReference<List<ConstraintViolationSummary>>() {});
+        } catch (Exception e) {
+            log.warn("Cannot parse stored score explanation: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Returns students who received fewer lessons than their declared
+     * weekly availability windows suggest they wanted.
+     *
+     * <p>Algorithm:
+     * <ol>
+     *   <li>Load all teachers and collect their subscribed students into a unique set.</li>
+     *   <li>For each student count their {@code WeeklyAvailability} rows = desired slots.</li>
+     *   <li>Count their {@code ScheduledLesson} rows for this schedule = assigned lessons.</li>
+     *   <li>Return students where assigned &lt; desired, sorted by missing count descending.</li>
+     * </ol>
+     * </p>
+     *
+     * @param scheduleId the schedule identifier
+     * @return list of students with unmet lesson demand, sorted by most-missed first
+     */
+    @Transactional(readOnly = true)
+    public List<UnmetStudentDTO> getUnmetStudents(Long scheduleId) {
+        // Step 1: build studentId -> assignedLessons map from schedule snapshot
+        Map<Long, Integer> assignedByStudent = scheduledLessonRepository
+            .countAssignedLessonsByStudent(scheduleId)
+            .stream()
+            .collect(Collectors.toMap(
+                row -> (Long) row[0],
+                row -> ((Number) row[1]).intValue()
+            ));
+
+        // Step 2: collect all unique students subscribed to at least one teacher
+        Set<Student> allSubscribedStudents = teacherRepository.findAll()
+            .stream()
+            .flatMap(teacher -> teacher.getPrivateStudents().stream())
+            .collect(Collectors.toSet());
+
+        // Step 3: compare desired (availability windows) vs assigned for each student
+        return allSubscribedStudents.stream()
+            .map(student -> {
+                int desired = weeklyAvailabilityRepository.findByUserId(student.getId()).size();
+                int assigned = assignedByStudent.getOrDefault(student.getId(), 0);
+                int missing = desired - assigned;
+                return new UnmetStudentDTO(
+                    student.getId(),
+                    student.getFullName(),
+                    student.getEmail(),
+                    desired,
+                    assigned,
+                    missing
+                );
+            })
+            .filter(dto -> dto.missingLessons() > 0)
+            .sorted(Comparator.comparingInt(UnmetStudentDTO::missingLessons).reversed())
+            .toList();
     }
 }

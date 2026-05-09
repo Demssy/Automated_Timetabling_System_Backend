@@ -34,6 +34,14 @@ public class Student extends AbstractUser {
     @ToString.Exclude
     private Set<Teacher> preferredTeachers = new HashSet<>();
 
+    /**
+     * Groups this student is enrolled in.
+     * Managed via the 'student_groups' join table (owner side is DanceGroup).
+     */
+    @ManyToMany(mappedBy = "enrolledStudents", fetch = FetchType.LAZY)
+    @ToString.Exclude
+    private Set<DanceGroup> enrolledGroups = new HashSet<>();
+
 }
 
 

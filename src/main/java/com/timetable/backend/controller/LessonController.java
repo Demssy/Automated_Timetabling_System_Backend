@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,6 +30,23 @@ public class LessonController {
     @PreAuthorize("permitAll()")
     public ResponseEntity<List<ScheduledLessonDTO>> getActiveScheduleLessons() {
         return ResponseEntity.ok(lessonService.getActiveScheduleLessons());
+    }
+
+    /**
+     * GET /api/lessons/my-schedule
+     *
+     * Returns scheduled lessons from the active PUBLISHED schedule that belong
+     * to the currently authenticated user.
+     * <ul>
+     *   <li>STUDENT — their private lessons + group lessons they are enrolled in.</li>
+     *   <li>TEACHER — all lessons (private and group) that they teach.</li>
+     * </ul>
+     * Data is sourced from the {@code scheduled_lessons} snapshot table only.
+     */
+    @GetMapping("/my-schedule")
+    @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER')")
+    public ResponseEntity<List<ScheduledLessonDTO>> getMySchedule(Authentication authentication) {
+        return ResponseEntity.ok(lessonService.getMySchedule(authentication));
     }
 
     @GetMapping("/{id}")

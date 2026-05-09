@@ -2,6 +2,8 @@ package com.timetable.backend.domain.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.time.LocalDateTime;
+
 /**
  * DTO representing a scheduled lesson with all assignments.
  * Matches the Frontend ScheduledLessonDTO interface exactly.
@@ -19,7 +21,11 @@ public record ScheduledLessonDTO(
     @JsonProperty("isPinned") boolean isPinned,
     @JsonProperty("isActive") boolean isActive,
     TimeslotDTO timeslot,
-    RoomDTO room
+    RoomDTO room,
+    @JsonProperty("isCancelled") boolean isCancelled,
+    Long cancelledById,
+    LocalDateTime cancelledAt,
+    String cancelReason
 ) {
 }
 

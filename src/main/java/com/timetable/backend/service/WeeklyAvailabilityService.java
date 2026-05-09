@@ -1,6 +1,7 @@
 package com.timetable.backend.service;
 
 import com.timetable.backend.domain.dto.WeeklyAvailabilityDTO;
+import com.timetable.backend.domain.dto.WeeklyAvailabilityRequest;
 import com.timetable.backend.domain.model.AbstractUser;
 import com.timetable.backend.domain.model.WeeklyAvailability;
 import com.timetable.backend.domain.repository.UserRepository;
@@ -50,6 +51,59 @@ public class WeeklyAvailabilityService {
                     .toList();
             repository.saveAll(entities);
         }
+    }
+
+    /**
+     * Creates a single weekly availability slot for the given user.
+     *
+     * @param userId  target user ID
+     * @param request slot data (dayOfWeek, startTime, endTime)
+     * @return saved slot as DTO
+     */
+    @Transactional
+    public WeeklyAvailabilityDTO createSlot(Long userId, WeeklyAvailabilityRequest request) {
+        AbstractUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+        WeeklyAvailability entity = new WeeklyAvailability();
+        entity.setUser(user);
+        entity.setDayOfWeek(request.dayOfWeek());
+        entity.setStartTime(request.startTime());
+        entity.setEndTime(request.endTime());
+
+        return mapToDTO(repository.save(entity));
+    }
+
+    /**
+     * Updates an existing weekly availability slot by its ID.
+     *
+     * @param slotId  ID of the slot to update
+     * @param request new values (dayOfWeek, startTime, endTime)
+     * @return updated slot as DTO
+     */
+    @Transactional
+    public WeeklyAvailabilityDTO updateSlot(Long slotId, WeeklyAvailabilityRequest request) {
+        WeeklyAvailability entity = repository.findById(slotId)
+                .orElseThrow(() -> new IllegalArgumentException("Availability slot not found: " + slotId));
+
+        entity.setDayOfWeek(request.dayOfWeek());
+        entity.setStartTime(request.startTime());
+        entity.setEndTime(request.endTime());
+
+        return mapToDTO(repository.save(entity));
+    }
+
+    /**
+     * Deletes a single weekly availability slot by its ID.
+     *
+     * @param slotId ID of the slot to delete
+     */
+    @Transactional
+    public void deleteSlot(Long slotId) {
+        if (!repository.existsById(slotId)) {
+            throw new IllegalArgumentException("Availability slot not found: " + slotId);
+        }
+        repository.deleteById(slotId);
     }
 
     private WeeklyAvailabilityDTO mapToDTO(WeeklyAvailability entity) {

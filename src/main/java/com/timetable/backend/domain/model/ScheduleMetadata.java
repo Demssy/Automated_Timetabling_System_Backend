@@ -71,6 +71,14 @@ public class ScheduleMetadata {
     private String description;
 
     /**
+     * Per-constraint score breakdown serialized as JSON.
+     * Populated by SolutionPersistenceService after each best-solution callback.
+     * Example: [{"constraintName":"Teacher conflict","hardScore":-1,"softScore":0,"matchCount":1}]
+     */
+    @Column(name = "score_explanation", columnDefinition = "TEXT")
+    private String scoreExplanation;
+
+    /**
      * Sets createdAt timestamp before persisting
      */
     @PrePersist

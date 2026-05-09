@@ -1,10 +1,7 @@
 package com.timetable.backend.controller;
 
-import ai.timefold.solver.core.api.solver.SolverStatus;
 import com.timetable.backend.domain.dto.*;
-import com.timetable.backend.domain.mapper.LessonMapper;
 import com.timetable.backend.service.*;
-import com.timetable.backend.solver.DanceSchedule;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,8 +33,8 @@ public class AdminController {
     private final TimeslotService timeslotService;
     private final DanceGroupService danceGroupService;
     private final LessonService lessonService;
-    private final LessonMapper lessonMapper;
     private final ScheduleMetadataService scheduleMetadataService;
+    private final WeeklyAvailabilityService weeklyAvailabilityService;
 
     // =========================================================================
     // Schedule management  —  /api/admin/schedules
@@ -353,18 +350,94 @@ public class AdminController {
                 .body(lessonService.createLesson(request));
     }
 
-    /** Update lesson data. Can also be used to manually pin a lesson to a specific timeslot/room. */
+    /**
+     * Update lesson data — also used for manual drag-and-drop reschedule.
+     *
+     * <p>Uses {@link UpdateLessonRequest} instead of {@link CreateLessonRequest}
+     * because {@code timeslotId} and {@code roomId} must be explicitly nullable
+     * without triggering validation errors.
+     *
+     * <p>Returns 409 Conflict (via {@link GlobalExceptionHandler})
+     * when the lesson is currently pinned and the request attempts to change
+     * the timeslot or room.
+     */
     @PutMapping("/lessons/{id}")
     public ResponseEntity<ScheduledLessonDTO> updateLesson(
             @PathVariable Long id,
-            @RequestBody @Valid CreateLessonRequest request) {
-        return ResponseEntity.ok(lessonService.updateLesson(id, request));
+            @RequestBody @Valid UpdateLessonRequest request) {
+        return ResponseEntity.ok(lessonService.updateLessonManually(id, request));
     }
 
     /** Delete a lesson. */
     @DeleteMapping("/lessons/{id}")
     public ResponseEntity<Void> deleteLesson(@PathVariable Long id) {
         lessonService.deleteLesson(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // =========================================================================
+    // Weekly Availability management  —  /api/admin/availability
+    // =========================================================================
+
+    /**
+     * Returns all users (TEACHER + STUDENT) with their full weekly availability.
+     * Used to populate the admin availability dashboard table.
+     * Delegates to {@link UserService#getAllUsers()} which already embeds weeklyAvailabilities.
+     */
+    @GetMapping("/availability/users")
+    public ResponseEntity<List<UserResponse>> getAllUsersWithAvailability() {
+        return ResponseEntity.ok(userService.getAllUsers());
+    }
+
+    /**
+     * Returns the weekly availability slots for a single user.
+     *
+     * @param userId target user ID
+     * @return list of weekly availability slots
+     */
+    @GetMapping("/availability/users/{userId}")
+    public ResponseEntity<List<WeeklyAvailabilityDTO>> getUserAvailability(@PathVariable Long userId) {
+        return ResponseEntity.ok(weeklyAvailabilityService.getByUserId(userId));
+    }
+
+    /**
+     * Creates a new weekly availability slot for the specified user.
+     *
+     * @param userId  target user ID
+     * @param request dayOfWeek, startTime, endTime
+     * @return 201 Created with the saved slot
+     */
+    @PostMapping("/availability/users/{userId}/weekly")
+    public ResponseEntity<WeeklyAvailabilityDTO> createAvailabilitySlot(
+            @PathVariable Long userId,
+            @RequestBody @Valid WeeklyAvailabilityRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(weeklyAvailabilityService.createSlot(userId, request));
+    }
+
+    /**
+     * Updates an existing weekly availability slot.
+     *
+     * @param slotId  ID of the slot to update
+     * @param request new dayOfWeek, startTime, endTime values
+     * @return updated slot DTO
+     */
+    @PutMapping("/availability/weekly/{slotId}")
+    public ResponseEntity<WeeklyAvailabilityDTO> updateAvailabilitySlot(
+            @PathVariable Long slotId,
+            @RequestBody @Valid WeeklyAvailabilityRequest request) {
+        return ResponseEntity.ok(weeklyAvailabilityService.updateSlot(slotId, request));
+    }
+
+    /**
+     * Deletes a weekly availability slot by ID.
+     *
+     * @param slotId ID of the slot to remove
+     * @return 204 No Content
+     */
+    @DeleteMapping("/availability/weekly/{slotId}")
+    public ResponseEntity<Void> deleteAvailabilitySlot(@PathVariable Long slotId) {
+        weeklyAvailabilityService.deleteSlot(slotId);
         return ResponseEntity.noContent().build();
     }
 }

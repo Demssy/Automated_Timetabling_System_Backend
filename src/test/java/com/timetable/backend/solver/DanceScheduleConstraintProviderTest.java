@@ -1,6 +1,7 @@
 package com.timetable.backend.solver;
 
 import ai.timefold.solver.test.api.score.stream.ConstraintVerifier;
+import com.timetable.backend.config.SolverWeightsConfig;
 import com.timetable.backend.domain.model.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,7 +27,7 @@ class DanceScheduleConstraintProviderTest {
     @BeforeEach
     void setUp() {
         constraintVerifier = ConstraintVerifier.build(
-            new DanceScheduleConstraintProvider(),
+            new DanceScheduleConstraintProvider(new SolverWeightsConfig()),
             DanceSchedule.class,
             Lesson.class
         );
@@ -286,7 +287,7 @@ class DanceScheduleConstraintProviderTest {
     // ==================== SOFT CONSTRAINT: Minimize Teacher Gaps ====================
 
     @Test
-    @DisplayName("Minimize gaps: Penalty proportional to gap duration")
+    @DisplayName("Minimize gaps: Penalty proportional to gap duration (formula: (gapMinutes/60)+1)")
     void penaltyForTeacherGaps_proportionalToGapDuration() {
         Teacher teacher = createTeacher(1L, "John Doe");
         Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
@@ -297,9 +298,11 @@ class DanceScheduleConstraintProviderTest {
         Lesson lesson1 = createLesson(1L, teacher, group1, timeslot1, false, true);
         Lesson lesson2 = createLesson(2L, teacher, group2, timeslot2, false, true);
 
+        // Gap = 120 min  →  penalty = (120/60)+1 = 3
+        // Formula: (gapMinutes / 60) + 1  — penalizes each full hour of idle time plus a base cost.
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::minimizeTeacherGaps)
             .given(lesson1, lesson2, teacher, timeslot1, timeslot2)
-            .penalizesBy(120);
+            .penalizesBy(3);
     }
 
     @Test

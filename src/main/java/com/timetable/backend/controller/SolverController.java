@@ -6,6 +6,7 @@ import com.timetable.backend.domain.dto.*;
 import com.timetable.backend.domain.mapper.LessonMapper;
 import com.timetable.backend.domain.model.ScheduledLesson;
 import com.timetable.backend.service.SolverService;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -156,5 +157,51 @@ public class SolverController {
                 .build();
         }
     }
-}
 
+    /**
+     * Returns a per-constraint score breakdown for the last solved schedule.
+     * Shows exactly which hard/soft constraints were violated and by how many matches.
+     *
+     * GET /api/admin/solver/score-explanation/{scheduleId}
+     *
+     * @param scheduleId the schedule identifier
+     * @return {@link ScoreExplanationResponse} with total score and constraint violation list
+     */
+    @GetMapping("/score-explanation/{scheduleId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ScoreExplanationResponse> getScoreExplanation(@PathVariable Long scheduleId) {
+        log.info("Fetching score explanation for schedule ID: {}", scheduleId);
+        try {
+            return ResponseEntity.ok(solverService.getScoreExplanation(scheduleId));
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error retrieving score explanation for schedule {}", scheduleId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Returns students who received fewer lessons than the number of
+     * weekly availability windows they declared (i.e., unmet lesson demand).
+     *
+     * <p>Sorted by {@code missingLessons} descending — students with the most
+     * unmet demand appear first.</p>
+     *
+     * GET /api/admin/solver/unmet-students/{scheduleId}
+     *
+     * @param scheduleId the schedule identifier
+     * @return list of {@link UnmetStudentDTO}, empty array if all students are fully served
+     */
+    @GetMapping("/unmet-students/{scheduleId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<UnmetStudentDTO>> getUnmetStudents(@PathVariable Long scheduleId) {
+        log.info("Fetching unmet students for schedule ID: {}", scheduleId);
+        try {
+            return ResponseEntity.ok(solverService.getUnmetStudents(scheduleId));
+        } catch (Exception e) {
+            log.error("Error retrieving unmet students for schedule {}", scheduleId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+}

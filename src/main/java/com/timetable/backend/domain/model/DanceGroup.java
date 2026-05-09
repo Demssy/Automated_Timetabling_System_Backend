@@ -5,6 +5,9 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Represents a group of students with common characteristics.
  * Used as a Problem Fact in Timefold Solver.
@@ -42,6 +45,20 @@ public class DanceGroup {
 
     @Column(name = "target_age_range")
     private String targetAgeRange;
+
+    /**
+     * Students currently enrolled in this group.
+     * NOTE: This collection is NOT used by the Timefold Solver — it is only accessed
+     * by the enrollment API. The solver only reads DanceGroup identity via Lesson.danceGroup.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "student_groups",
+        joinColumns = @JoinColumn(name = "group_id"),
+        inverseJoinColumns = @JoinColumn(name = "student_id")
+    )
+    @ToString.Exclude
+    private Set<Student> enrolledStudents = new HashSet<>();
 
     @Version
     @Column(name = "version")
