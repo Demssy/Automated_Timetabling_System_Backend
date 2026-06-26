@@ -63,7 +63,7 @@ class TeacherServiceTest {
         savedTeacher.setId(1L);
         savedTeacher.setUser(existingUser);
 
-        TeacherResponse response = new TeacherResponse(1L, "teacher@test.com", "John Doe", 5, "#FFFFFF", Set.of());
+        TeacherResponse response = new TeacherResponse(1L, "teacher@test.com", "John Doe", 5, null, "#FFFFFF", Set.of());
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(existingUser));
         when(teacherRepository.existsById(1L)).thenReturn(false);

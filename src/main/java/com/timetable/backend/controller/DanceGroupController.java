@@ -1,6 +1,7 @@
 package com.timetable.backend.controller;
 
 import com.timetable.backend.domain.dto.DanceGroupDetailsDTO;
+import com.timetable.backend.domain.dto.GroupStudentDTO;
 import com.timetable.backend.service.DanceGroupService;
 import com.timetable.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,15 @@ public class DanceGroupController {
         Long userId = resolveCurrentUserId(authentication);
         String role = extractPrimaryRole(authentication);
         return ResponseEntity.ok(danceGroupService.getMyGroups(userId, role));
+    }
+
+    /**
+     * Returns all students enrolled in the given dance group.
+     * Accessible by any authenticated user (student, teacher, admin).
+     */
+    @GetMapping("/{id}/students")
+    public ResponseEntity<List<GroupStudentDTO>> getStudents(@PathVariable Long id) {
+        return ResponseEntity.ok(danceGroupService.getStudentsByGroupId(id));
     }
 
     /**

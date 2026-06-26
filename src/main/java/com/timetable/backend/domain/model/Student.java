@@ -1,6 +1,7 @@
 package com.timetable.backend.domain.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Past;
 import lombok.*;
 
@@ -29,6 +30,9 @@ public class Student extends AbstractUser {
     @Column(name = "parent_contact")
     private String parentContact;
 
+    @Min(0)
+    @Column(name = "desired_lessons_per_week")
+    private Integer desiredLessonsPerWeek;
 
     @ManyToMany(mappedBy = "privateStudents", fetch = FetchType.LAZY)
     @ToString.Exclude

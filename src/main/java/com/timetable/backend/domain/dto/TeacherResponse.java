@@ -7,6 +7,7 @@ public record TeacherResponse(
     String email,
     String fullName,
     Integer maxDailyHours,
+    Integer desiredLessonsPerWeek,
     String colorCode,
     Set<DanceStyleDTO> qualifiedStyles
 ) {}

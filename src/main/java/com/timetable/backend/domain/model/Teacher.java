@@ -34,6 +34,10 @@ public class Teacher {
     @Column(name = "max_daily_hours")
     private int maxDailyHours = 8;
 
+    @Min(0)
+    @Column(name = "desired_lessons_per_week")
+    private Integer desiredLessonsPerWeek;
+
     @Pattern(regexp = "^#?[A-Fa-f0-9]{6}$", message = "colorCode must be a 6-digit hex, optionally starting with #")
     @Column(name = "color_code")
     private String colorCode = "#000000";

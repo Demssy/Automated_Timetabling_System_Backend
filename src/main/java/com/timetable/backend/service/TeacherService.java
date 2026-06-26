@@ -56,6 +56,7 @@ public class TeacherService {
         }
         teacher.setMaxDailyHours(request.maxDailyHours());
         teacher.setColorCode(request.colorCode());
+        teacher.setDesiredLessonsPerWeek(request.desiredLessonsPerWeek());
         if (request.qualifiedStyleIds() != null) {
             Set<Long> requestedStyleIds = new HashSet<>(request.qualifiedStyleIds());
             List<DanceStyle> styles = danceStyleRepository.findAllById(requestedStyleIds);
@@ -113,6 +114,38 @@ public class TeacherService {
                 .map(studentMapper::toStudentResponse)
                 .toList();
     }
+
+    @Transactional(readOnly = true)
+    public TeacherResponse getMyProfile(String email) {
+        Teacher teacher = resolveTeacherByEmail(email);
+        return teacherMapper.toTeacherResponse(teacher);
+    }
+
+    @Transactional
+    public TeacherResponse updateMyProfile(String email, UpdateTeacherRequest request) {
+        Teacher teacher = resolveTeacherByEmail(email);
+        if (request.fullName() != null && teacher.getUser() != null) {
+            teacher.getUser().setFullName(request.fullName());
+            userRepository.save(teacher.getUser());
+        }
+        if (request.maxDailyHours() != null) {
+            teacher.setMaxDailyHours(request.maxDailyHours());
+        }
+        teacher.setDesiredLessonsPerWeek(request.desiredLessonsPerWeek());
+        if (request.colorCode() != null) {
+            teacher.setColorCode(request.colorCode());
+        }
+        if (request.qualifiedStyleIds() != null) {
+            var requestedStyleIds = new java.util.HashSet<>(request.qualifiedStyleIds());
+            var styles = danceStyleRepository.findAllById(requestedStyleIds);
+            if (styles.size() != requestedStyleIds.size()) {
+                throw new IllegalArgumentException("One or more DanceStyle IDs not found");
+            }
+            teacher.setDanceStyles(new java.util.HashSet<>(styles));
+        }
+        return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
+    }
+
     private Teacher resolveTeacherByEmail(String email) {
         AbstractUser user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));

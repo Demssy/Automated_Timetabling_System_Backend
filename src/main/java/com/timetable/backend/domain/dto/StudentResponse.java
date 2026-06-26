@@ -14,6 +14,7 @@ import java.time.LocalDate;
  * @param birthDate student's date of birth
  * @param danceLevel current dance skill level
  * @param parentContact parent/guardian contact information
+ * @param desiredLessonsPerWeek preferred number of lessons per week
  */
 public record StudentResponse(
     Long id,
@@ -21,6 +22,7 @@ public record StudentResponse(
     String fullName,
     LocalDate birthDate,
     DanceLevel danceLevel,
-    String parentContact
+    String parentContact,
+    Integer desiredLessonsPerWeek
 ) {}
 

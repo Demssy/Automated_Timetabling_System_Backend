@@ -1,6 +1,8 @@
 package com.timetable.backend.service;
 import com.timetable.backend.domain.dto.StudentDTO;
+import com.timetable.backend.domain.dto.StudentResponse;
 import com.timetable.backend.domain.dto.TeacherResponse;
+import com.timetable.backend.domain.dto.UpdateStudentRequest;
 import com.timetable.backend.domain.mapper.StudentMapper;
 import com.timetable.backend.domain.mapper.TeacherMapper;
 import com.timetable.backend.domain.model.AbstractUser;
@@ -67,6 +69,7 @@ public class StudentService {
         student.setBirthDate(request.birthDate());
         student.setDanceLevel(request.danceLevel());
         student.setParentContact(request.parentContact());
+        student.setDesiredLessonsPerWeek(request.desiredLessonsPerWeek());
         if (request.password() != null && !request.password().isBlank()) {
             student.setPasswordHash(passwordEncoder.encode(request.password()));
         }
@@ -127,6 +130,24 @@ public class StudentService {
                 .map(teacherMapper::toTeacherResponse)
                 .toList();
     }
+
+    @Transactional(readOnly = true)
+    public StudentResponse getMyProfile(String email) {
+        Student student = resolveStudentByEmail(email);
+        return studentMapper.toStudentResponse(student);
+    }
+
+    @Transactional
+    public StudentResponse updateMyProfile(String email, UpdateStudentRequest request) {
+        Student student = resolveStudentByEmail(email);
+        student.setFullName(request.fullName());
+        student.setBirthDate(request.birthDate());
+        student.setDanceLevel(request.danceLevel());
+        student.setParentContact(request.parentContact());
+        student.setDesiredLessonsPerWeek(request.desiredLessonsPerWeek());
+        return studentMapper.toStudentResponse(studentRepository.save(student));
+    }
+
     private Student resolveStudentByEmail(String email) {
         AbstractUser user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));

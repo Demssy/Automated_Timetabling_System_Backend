@@ -3,6 +3,7 @@ package com.timetable.backend.service;
 import com.timetable.backend.domain.dto.DanceGroupDTO;
 import com.timetable.backend.domain.dto.DanceGroupDetailsDTO;
 import com.timetable.backend.domain.dto.GroupScheduleSlotDTO;
+import com.timetable.backend.domain.dto.GroupStudentDTO;
 import com.timetable.backend.domain.mapper.DictionaryMapper;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
@@ -111,6 +112,28 @@ public class DanceGroupService {
             case "ROLE_TEACHER" -> getGroupsForTeacher(userId);
             default             -> getAllGroupsWithDetails(userId);
         };
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Students in a group
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Returns all students enrolled in the specified dance group.
+     *
+     * @param groupId the id of the {@link DanceGroup}
+     * @return list of {@link GroupStudentDTO} sorted by student full name
+     * @throws IllegalArgumentException if no group with that id exists
+     */
+    @Transactional(readOnly = true)
+    public List<GroupStudentDTO> getStudentsByGroupId(Long groupId) {
+        DanceGroup group = danceGroupRepository.findById(groupId)
+            .orElseThrow(() -> new IllegalArgumentException("DanceGroup not found with id: " + groupId));
+
+        return group.getEnrolledStudents().stream()
+            .map(s -> new GroupStudentDTO(s.getId(), s.getFullName(), s.getEmail(), s.getDanceLevel()))
+            .sorted(Comparator.comparing(dto -> dto.fullName() != null ? dto.fullName() : ""))
+            .toList();
     }
 
     // ──────────────────────────────────────────────────────────────────

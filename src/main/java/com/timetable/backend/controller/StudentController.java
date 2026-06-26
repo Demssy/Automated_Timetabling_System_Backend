@@ -1,7 +1,9 @@
 package com.timetable.backend.controller;
 
 import com.timetable.backend.domain.dto.StudentDTO;
+import com.timetable.backend.domain.dto.StudentResponse;
 import com.timetable.backend.domain.dto.TeacherResponse;
+import com.timetable.backend.domain.dto.UpdateStudentRequest;
 import com.timetable.backend.service.StudentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -94,6 +96,30 @@ public class StudentController {
         String email = authentication.getName();
         studentService.removeMyTeacherPreference(email, teacherId);
         return ResponseEntity.noContent().build();
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Student self-service: profile
+    // ──────────────────────────────────────────────────────────
+
+    /**
+     * Returns the authenticated student's own profile.
+     */
+    @GetMapping("/me/profile")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<StudentResponse> getMyProfile(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getMyProfile(authentication.getName()));
+    }
+
+    /**
+     * Updates the authenticated student's own profile.
+     */
+    @PutMapping("/me/profile")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<StudentResponse> updateMyProfile(
+            @RequestBody @Valid UpdateStudentRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(studentService.updateMyProfile(authentication.getName(), request));
     }
 }
 

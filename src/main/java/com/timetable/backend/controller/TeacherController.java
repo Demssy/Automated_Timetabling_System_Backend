@@ -4,6 +4,7 @@ import com.timetable.backend.domain.dto.CreateTeacherRequest;
 import com.timetable.backend.domain.dto.StudentAvailabilityResponse;
 import com.timetable.backend.domain.dto.StudentResponse;
 import com.timetable.backend.domain.dto.TeacherResponse;
+import com.timetable.backend.domain.dto.UpdateTeacherRequest;
 import com.timetable.backend.service.TeacherService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -91,6 +92,29 @@ public class TeacherController {
         return ResponseEntity.ok(teacherService.getStudentAvailability(email, studentId));
     }
 
+    // ──────────────────────────────────────────────────────────
+    // Teacher self-service: profile
+    // ──────────────────────────────────────────────────────────
+
+    /**
+     * Returns the authenticated teacher's own profile.
+     */
+    @GetMapping("/me/profile")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<TeacherResponse> getMyProfile(Authentication authentication) {
+        return ResponseEntity.ok(teacherService.getMyProfile(authentication.getName()));
+    }
+
+    /**
+     * Updates the authenticated teacher's own profile, including desiredLessonsPerWeek.
+     */
+    @PutMapping("/me/profile")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<TeacherResponse> updateMyProfile(
+            @RequestBody @Valid UpdateTeacherRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(teacherService.updateMyProfile(authentication.getName(), request));
+    }
 
 }
 

@@ -50,7 +50,7 @@ class TeacherControllerTest {
         // CreateTeacherRequest now promotes an existing user (userId) to Teacher role
         CreateTeacherRequest request = new CreateTeacherRequest(1L, 5, "#FFFFFF", Set.of(1L));
         TeacherResponse response = new TeacherResponse(
-                1L, "teacher@test.com", "John Doe", 5, "#FFFFFF", Set.of()
+                1L, "teacher@test.com", "John Doe", 5, null, "#FFFFFF", Set.of()
         );
 
         when(teacherService.createTeacher(any(CreateTeacherRequest.class))).thenReturn(response);
