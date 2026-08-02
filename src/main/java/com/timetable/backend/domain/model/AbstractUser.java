@@ -14,7 +14,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @ToString
-public abstract class AbstractUser {
+public class AbstractUser {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

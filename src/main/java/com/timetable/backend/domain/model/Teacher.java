@@ -42,6 +42,14 @@ public class Teacher {
     @Column(name = "color_code")
     private String colorCode = "#000000";
 
+    /** Teacher's contact phone number (supplied during self-registration). */
+    @Column(name = "phone", length = 50)
+    private String phone;
+
+    /** Short biography shown on the teacher's public profile. */
+    @Column(name = "bio", columnDefinition = "TEXT")
+    private String bio;
+
     @ManyToMany
     @JoinTable(
         name = "teacher_dance_style",

@@ -61,7 +61,7 @@ public class SolverWeightsConfig {
      * Should be a fraction of rewardStudentAssignment so it does not override matchmaking.
      * Default: 10
      */
-    private int rewardPrimeTime = 10;
+    private int rewardPrimeTime = 2;
 
 
     /**
@@ -77,5 +77,20 @@ public class SolverWeightsConfig {
      * Default: 6
      */
     private int maxTeacherLessonsPerDay = 6;
+
+    /**
+     * Soft penalty per lesson missing from a student's desired weekly count.
+     * Applied when a student has at least one lesson assigned but fewer than desired.
+     * Should be less than rewardStudentAssignment so the solver always benefits from assigning.
+     * Default: 50 (50% of assignment reward — meaningful but not dominant)
+     */
+    private int penaltyStudentUnderDesiredLessons = 50;
+
+    /**
+     * Soft penalty per lesson missing from a teacher's desired weekly count.
+     * Applied when a teacher has fewer assigned lessons than their desiredLessonsPerWeek.
+     * Default: 30
+     */
+    private int penaltyTeacherUnderDesiredLessons = 30;
 }
 

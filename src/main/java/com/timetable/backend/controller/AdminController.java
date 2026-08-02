@@ -206,26 +206,26 @@ public class AdminController {
     // =========================================================================
 
     /** Get all dance styles. */
-    @GetMapping("/styles")
+    @GetMapping({"/styles", "/dance-styles"})
     public ResponseEntity<List<DanceStyleDTO>> getAllStyles() {
         return ResponseEntity.ok(danceStyleService.getAllStyles());
     }
 
     /** Get dance style by ID. */
-    @GetMapping("/styles/{id}")
+    @GetMapping({"/styles/{id}", "/dance-styles/{id}"})
     public ResponseEntity<DanceStyleDTO> getStyleById(@PathVariable Long id) {
         return ResponseEntity.ok(danceStyleService.getStyleById(id));
     }
 
     /** Create a new dance style. */
-    @PostMapping("/styles")
+    @PostMapping({"/styles", "/dance-styles"})
     public ResponseEntity<DanceStyleDTO> createStyle(@RequestBody @Valid DanceStyleDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(danceStyleService.createStyle(dto));
     }
 
     /** Update dance style details. */
-    @PutMapping("/styles/{id}")
+    @PutMapping({"/styles/{id}", "/dance-styles/{id}"})
     public ResponseEntity<DanceStyleDTO> updateStyle(
             @PathVariable Long id,
             @RequestBody @Valid DanceStyleDTO dto) {
@@ -233,7 +233,7 @@ public class AdminController {
     }
 
     /** Delete a dance style. */
-    @DeleteMapping("/styles/{id}")
+    @DeleteMapping({"/styles/{id}", "/dance-styles/{id}"})
     public ResponseEntity<Void> deleteStyle(@PathVariable Long id) {
         danceStyleService.deleteStyle(id);
         return ResponseEntity.noContent().build();

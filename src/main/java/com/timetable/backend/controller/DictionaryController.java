@@ -84,17 +84,15 @@ public class DictionaryController {
         return ResponseEntity.notFound().build();
     }
 
-    // Dance styles (ROLE_ADMIN)
+    // Dance styles — public list, admin-only modifications
     @PreAuthorize("hasRole('ADMIN')")
-    @PostMapping("/styles")
+    @PostMapping({"/styles", "/dance-styles"})
     public ResponseEntity<DanceStyleDTO> createStyle(@Valid @RequestBody DanceStyleDTO styleDTO) {
         DanceStyle style = dictionaryMapper.toDanceStyle(styleDTO);
         DanceStyle saved = danceStyleRepository.save(style);
         return ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(saved));
     }
 
-
-    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/styles")
     public ResponseEntity<DanceStylesResponse> listStyles() {
         List<DanceStyleDTO> styles = danceStyleRepository.findAll().stream()
@@ -103,8 +101,16 @@ public class DictionaryController {
         return ResponseEntity.ok(new DanceStylesResponse(styles));
     }
 
+    @GetMapping("/dance-styles")
+    public ResponseEntity<List<DanceStyleDTO>> listDanceStyles() {
+        List<DanceStyleDTO> styles = danceStyleRepository.findAll().stream()
+                .map(dictionaryMapper::toDanceStyleDTO)
+                .toList();
+        return ResponseEntity.ok(styles);
+    }
+
     @PreAuthorize("hasRole('ADMIN')")
-    @GetMapping("/styles/{id}")
+    @GetMapping({"/styles/{id}", "/dance-styles/{id}"})
     public ResponseEntity<DanceStyleDTO> getStyle(@PathVariable Long id) {
         Optional<DanceStyle> s = danceStyleRepository.findById(id);
         return s.map(style -> ResponseEntity.ok(dictionaryMapper.toDanceStyleDTO(style)))
@@ -112,7 +118,7 @@ public class DictionaryController {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
-    @PutMapping("/styles/{id}")
+    @PutMapping({"/styles/{id}", "/dance-styles/{id}"})
     public ResponseEntity<DanceStyleDTO> updateStyle(@PathVariable Long id, @Valid @RequestBody DanceStyleDTO updated) {
         return danceStyleRepository.findById(id).map(s -> {
             s.setName(updated.name());
@@ -122,7 +128,7 @@ public class DictionaryController {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
-    @DeleteMapping("/styles/{id}")
+    @DeleteMapping({"/styles/{id}", "/dance-styles/{id}"})
     public ResponseEntity<?> deleteStyle(@PathVariable Long id) {
         if (danceStyleRepository.existsById(id)) {
             danceStyleRepository.deleteById(id);

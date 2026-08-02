@@ -32,16 +32,14 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
-        UserResponse userResponse = authService.registerStudent(request.email(), request.password(), request.fullName(), request.birthDate());
+        UserResponse userResponse = authService.register(request);
 
-        // Generate token for the registered user
-        var userDetails = User.withUsername(userResponse.email())
+        var userDetails = org.springframework.security.core.userdetails.User.withUsername(userResponse.email())
                 .password("")
                 .roles(userResponse.role())
                 .build();
         String token = jwtService.generateToken(userDetails);
 
-        // Set cookie
         return getUserResponseWithCookie(token, userResponse);
     }
 
@@ -68,8 +66,8 @@ public class AuthController {
                 .secure(cookieSecure)
                 .path("/")
                 .maxAge(0)
-                .sameSite("Strict")
-                .domain("localhost")
+                .sameSite("Lax") // Changed from "Strict" to "Lax" for stable HTTP proxying
+                // REMOVED .domain("localhost") to allow dynamic domain binding
                 .build();
 
         return ResponseEntity.ok()
@@ -85,8 +83,8 @@ public class AuthController {
                 .secure(cookieSecure)
                 .path("/")
                 .maxAge(maxAgeSec)
-                .sameSite("Strict")
-                .domain("localhost") // Adjust domain as needed
+                .sameSite("Lax") // Changed from "Strict" to "Lax"
+                // REMOVED .domain("localhost") to make the build environment-agnostic
                 .build();
 
         return ResponseEntity.ok()

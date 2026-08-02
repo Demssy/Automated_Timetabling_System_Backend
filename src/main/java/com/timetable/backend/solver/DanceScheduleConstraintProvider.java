@@ -104,8 +104,14 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 studentOneTimeUnavailability(constraintFactory),
                 studentLessonsPerDayMatchAvailabilityWindows(constraintFactory),
 
+                // Desired lessons per week — hard cap + soft nudge
+                studentDoNotExceedDesiredLessonsPerWeek(constraintFactory),
+                teacherDoNotExceedDesiredLessonsPerWeek(constraintFactory),
+
                 // Soft constraints
                 rewardStudentAssignment(constraintFactory),
+                studentMeetDesiredLessonsPerWeek(constraintFactory),
+                teacherMeetDesiredLessonsPerWeek(constraintFactory),
                 minimizeTeacherGaps(constraintFactory),
                 rewardPrimeTime(constraintFactory),
                 balanceTeacherLoad(constraintFactory)
@@ -368,7 +374,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      * SOFT CONSTRAINT: Minimize Teacher Gaps
      *
      * Penalizes idle gaps between a teacher's lessons on the same day,
-     * but ONLY when the gap exceeds {@value ACCEPTABLE_TEACHER_GAP_MINUTES} minutes.
+     * but ONLY when the gap exceeds {@value "ACCEPTABLE_TEACHER_GAP_MINUTES"} minutes.
      *
      * <p>A gap of 10–15 minutes is a normal break the teacher needs between students.
      * Only gaps representing real idle time (e.g. 2-hour hole mid-day) are penalized.</p>
@@ -531,5 +537,100 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .penalize(HardSoftScore.ONE_HARD,
                         (sdwc, windowCount) -> sdwc.lessonCount() - windowCount)
                 .asConstraint("Student lessons per day must not exceed availability windows");
+    }
+
+    /**
+     * HARD CONSTRAINT: Student Must Not Exceed Desired Lessons Per Week
+     *
+     * <p>If a student has set {@code desiredLessonsPerWeek}, the solver must not
+     * assign more private lessons to them than that value across the whole week.
+     * Students who have not set this field ({@code null}) are not affected.</p>
+     *
+     * <p>Penalizes by 1 hard per excess lesson beyond the desired count.</p>
+     */
+    Constraint studentDoNotExceedDesiredLessonsPerWeek(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate()
+                        && lesson.getStudent() != null
+                        && lesson.getTimeslot() != null)
+                .groupBy(Lesson::getStudent, ConstraintCollectors.count())
+                .filter((student, count) ->
+                        student.getDesiredLessonsPerWeek() != null
+                        && count > student.getDesiredLessonsPerWeek())
+                .penalize(HardSoftScore.ONE_HARD,
+                        (student, count) -> count - student.getDesiredLessonsPerWeek())
+                .asConstraint("Student must not exceed desired lessons per week");
+    }
+
+    /**
+     * SOFT CONSTRAINT: Student Should Meet Desired Lessons Per Week
+     *
+     * <p>Penalizes each lesson the student is missing compared to their desired weekly count.
+     * Only fires when a student has at least one lesson assigned but fewer than desired —
+     * the zero-assigned case is already covered by {@link #rewardStudentAssignment}.
+     * Only applies when {@code desiredLessonsPerWeek} is set ({@code != null}).</p>
+     *
+     * <p>Weight: {@link SolverWeightsConfig#getPenaltyStudentUnderDesiredLessons()} per
+     * missing lesson (default 50 — half of the assignment reward, so the solver always
+     * gains net by assigning but is also nudged toward filling all desired slots).</p>
+     */
+    Constraint studentMeetDesiredLessonsPerWeek(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate()
+                        && lesson.getStudent() != null
+                        && lesson.getTimeslot() != null)
+                .groupBy(Lesson::getStudent, ConstraintCollectors.count())
+                .filter((student, count) ->
+                        student.getDesiredLessonsPerWeek() != null
+                        && count < student.getDesiredLessonsPerWeek())
+                .penalize(HardSoftScore.ofSoft(weights.getPenaltyStudentUnderDesiredLessons()),
+                        (student, count) -> student.getDesiredLessonsPerWeek() - count)
+                .asConstraint("Student should meet desired lessons per week");
+    }
+
+    /**
+     * HARD CONSTRAINT: Teacher Must Not Exceed Desired Lessons Per Week
+     *
+     * <p>If a teacher has set {@code desiredLessonsPerWeek}, the total number of
+     * lessons (private + group) assigned to them must not exceed that value.
+     * Teachers who have not set this field ({@code null}) are not affected.</p>
+     *
+     * <p>Penalizes by 1 hard per lesson beyond the desired weekly count.</p>
+     */
+    Constraint teacherDoNotExceedDesiredLessonsPerWeek(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .groupBy(Lesson::getTeacher, ConstraintCollectors.count())
+                .filter((teacher, count) ->
+                        teacher.getDesiredLessonsPerWeek() != null
+                        && count > teacher.getDesiredLessonsPerWeek())
+                .penalize(HardSoftScore.ONE_HARD,
+                        (teacher, count) -> count - teacher.getDesiredLessonsPerWeek())
+                .asConstraint("Teacher must not exceed desired lessons per week");
+    }
+
+    /**
+     * SOFT CONSTRAINT: Teacher Should Meet Desired Lessons Per Week
+     *
+     * <p>Penalizes each lesson the teacher is missing compared to their desired weekly count.
+     * Only applies when {@code desiredLessonsPerWeek} is set ({@code != null}).</p>
+     *
+     * <p>Weight: {@link SolverWeightsConfig#getPenaltyTeacherUnderDesiredLessons()} per
+     * missing lesson (default 30).</p>
+     */
+    Constraint teacherMeetDesiredLessonsPerWeek(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .groupBy(Lesson::getTeacher, ConstraintCollectors.count())
+                .filter((teacher, count) ->
+                        teacher.getDesiredLessonsPerWeek() != null
+                        && count < teacher.getDesiredLessonsPerWeek())
+                .penalize(HardSoftScore.ofSoft(weights.getPenaltyTeacherUnderDesiredLessons()),
+                        (teacher, count) -> teacher.getDesiredLessonsPerWeek() - count)
+                .asConstraint("Teacher should meet desired lessons per week");
     }
 }
