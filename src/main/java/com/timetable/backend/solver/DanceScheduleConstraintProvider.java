@@ -38,6 +38,7 @@ import java.time.LocalTime;
  * - Max 6 lessons per teacher per day (physical workload limit)
  * - Teacher availability: Lessons cannot be scheduled when teacher is unavailable
  * - Student matching: subscription, availability, no double-booking
+ * - At most 1 private lesson per student per day
  * - Student lessons per day must not exceed their availability windows for that day
  *
  * Soft Constraints (optimized):
@@ -100,6 +101,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 groupLessonCannotHaveStudent(constraintFactory),
                 studentMustBeSubscribedToTeacher(constraintFactory),
                 studentConflict(constraintFactory),
+                studentMaxOnePrivateLessonPerDay(constraintFactory),
                 studentOutsideWeeklyAvailability(constraintFactory),
                 studentOneTimeUnavailability(constraintFactory),
                 studentLessonsPerDayMatchAvailabilityWindows(constraintFactory),
@@ -313,6 +315,33 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 )
                 .penalize(HardSoftScore.ONE_HARD)
                 .asConstraint("Student conflict (double booking)");
+    }
+
+    /**
+     * HARD CONSTRAINT: Student Max One Private Lesson Per Day
+     *
+     * <p>Each student may attend at most one private lesson per day of week.
+     * Multiple private lessons for the same student on the same day are penalized
+     * by {@code lessonCount - 1}.</p>
+     */
+    Constraint studentMaxOnePrivateLessonPerDay(ConstraintFactory constraintFactory) {
+        record StudentDay(Student student, DayOfWeek day) {}
+
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate()
+                        && lesson.getStudent() != null
+                        && lesson.getTimeslot() != null)
+                .groupBy(
+                        lesson -> new StudentDay(
+                                lesson.getStudent(),
+                                lesson.getTimeslot().getDayOfWeek()),
+                        ConstraintCollectors.count()
+                )
+                .filter((studentDay, lessonCount) -> lessonCount > 1)
+                .penalize(HardSoftScore.ONE_HARD,
+                        (studentDay, lessonCount) -> lessonCount - 1)
+                .asConstraint("Student max one private lesson per day");
     }
 
     /**

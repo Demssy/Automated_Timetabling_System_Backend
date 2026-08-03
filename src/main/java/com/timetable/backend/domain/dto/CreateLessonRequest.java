@@ -16,6 +16,7 @@ import jakarta.validation.constraints.NotNull;
  * </ul>
  */
 public record CreateLessonRequest(
+    Long scheduleId,   // Required for one-time lessons added directly to a concrete schedule
     @NotNull(message = "Teacher ID is required")
     Long teacherId,
     Long danceGroupId,  // Required for group lessons; must be null for private lessons
@@ -28,4 +29,3 @@ public record CreateLessonRequest(
     Long timeslotId, // Optional; required when isPinned = true
     Long roomId      // Optional; auto-assigned if null
 ) {}
-

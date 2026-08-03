@@ -24,8 +24,12 @@ public class ScheduledLesson {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "lesson_id", nullable = false)
+    @JoinColumn(name = "lesson_id")
     private Lesson lesson;
+
+    @ManyToOne
+    @JoinColumn(name = "added_lesson_id")
+    private AddedLesson addedLesson;
 
     @ManyToOne
     @JoinColumn(name = "schedule_id", nullable = false)
@@ -73,4 +77,46 @@ public class ScheduledLesson {
     /** Optional human-readable reason for the cancellation. */
     @Column(name = "cancel_reason", length = 255)
     private String cancelReason;
+
+    public Teacher getSourceTeacher() {
+        if (lesson != null) {
+            return lesson.getTeacher();
+        }
+        return addedLesson != null ? addedLesson.getTeacher() : null;
+    }
+
+    public DanceGroup getSourceDanceGroup() {
+        if (lesson != null) {
+            return lesson.getDanceGroup();
+        }
+        return addedLesson != null ? addedLesson.getDanceGroup() : null;
+    }
+
+    public int getSourceDurationMinutes() {
+        if (lesson != null) {
+            return lesson.getDurationMinutes();
+        }
+        return addedLesson != null ? addedLesson.getDurationMinutes() : 0;
+    }
+
+    public boolean isSourcePrivate() {
+        if (lesson != null) {
+            return lesson.isPrivate();
+        }
+        return addedLesson != null && addedLesson.isPrivate();
+    }
+
+    public boolean isSourcePinned() {
+        if (lesson != null) {
+            return lesson.isPinned();
+        }
+        return addedLesson != null && addedLesson.isPinned();
+    }
+
+    public boolean isSourceActive() {
+        if (lesson != null) {
+            return lesson.isActive();
+        }
+        return addedLesson != null && addedLesson.isActive();
+    }
 }

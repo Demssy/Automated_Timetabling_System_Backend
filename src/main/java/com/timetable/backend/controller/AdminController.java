@@ -58,6 +58,24 @@ public class AdminController {
         return ResponseEntity.ok(scheduleMetadataService.getByIdForAdmin(id));
     }
 
+    /**
+     * Confirms manual schedule edits for draft/generated schedules.
+     * No status transition is performed.
+     */
+    @PatchMapping("/schedules/{id}/save")
+    public ResponseEntity<ScheduleMetadataDTO> saveSchedule(@PathVariable Long id) {
+        return ResponseEntity.ok(scheduleMetadataService.save(id));
+    }
+
+    /**
+     * Confirms manual edits for a published schedule while keeping it published.
+     * No status transition is performed.
+     */
+    @PatchMapping("/schedules/{id}/republish")
+    public ResponseEntity<ScheduleMetadataDTO> republishSchedule(@PathVariable Long id) {
+        return ResponseEntity.ok(scheduleMetadataService.republish(id));
+    }
+
     // =========================================================================
     // User management  —  /api/admin/users
     // =========================================================================

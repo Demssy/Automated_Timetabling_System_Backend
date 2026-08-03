@@ -127,8 +127,13 @@ public class ScheduledLessonCancellationService {
      */
     private void verifyTeacherOwnership(ScheduledLesson scheduledLesson, Authentication authentication) {
         String callerEmail = authentication.getName();
+        var sourceTeacher = scheduledLesson.getSourceTeacher();
+        if (sourceTeacher == null || sourceTeacher.getUser() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Scheduled lesson has no teacher source");
+        }
         // Teacher uses @MapsId composition — email lives on the nested AbstractUser, not Teacher itself.
-        String lessonTeacherEmail = scheduledLesson.getLesson().getTeacher().getUser().getEmail();
+        String lessonTeacherEmail = sourceTeacher.getUser().getEmail();
 
         if (!callerEmail.equals(lessonTeacherEmail)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -141,5 +146,4 @@ public class ScheduledLessonCancellationService {
                 .anyMatch(a -> a.getAuthority().equals(role));
     }
 }
-
 

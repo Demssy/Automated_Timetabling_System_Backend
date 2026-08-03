@@ -34,7 +34,10 @@ public interface ScheduledLessonRepository extends JpaRepository<ScheduledLesson
     @Query("""
         SELECT sl FROM ScheduledLesson sl
         WHERE sl.schedule.id = :scheduleId
-          AND sl.lesson.teacher.id = :teacherId
+          AND (
+            (sl.lesson IS NOT NULL AND sl.lesson.teacher.id = :teacherId)
+            OR (sl.addedLesson IS NOT NULL AND sl.addedLesson.teacher.id = :teacherId)
+          )
         """)
     List<ScheduledLesson> findByScheduleIdAndTeacherId(
         @Param("scheduleId") Long scheduleId,
@@ -51,10 +54,12 @@ public interface ScheduledLessonRepository extends JpaRepository<ScheduledLesson
     @Query("""
         SELECT DISTINCT sl FROM ScheduledLesson sl
         LEFT JOIN sl.lesson.danceGroup.enrolledStudents es
+        LEFT JOIN sl.addedLesson.danceGroup.enrolledStudents aes
         WHERE sl.schedule.id = :scheduleId
           AND (
             sl.student.id = :studentId
-            OR (sl.lesson.isPrivate = false AND es.id = :studentId)
+            OR (sl.lesson IS NOT NULL AND sl.lesson.isPrivate = false AND es.id = :studentId)
+            OR (sl.addedLesson IS NOT NULL AND sl.addedLesson.isPrivate = false AND aes.id = :studentId)
           )
         """)
     List<ScheduledLesson> findByScheduleIdAndStudentId(

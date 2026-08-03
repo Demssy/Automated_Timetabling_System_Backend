@@ -104,6 +104,7 @@ public class SolutionPersistenceService {
             snapshotsToSave.add(new ScheduledLesson(
                 null,
                 lesson,
+                null,
                 schedule,
                 lesson.getTimeslot(),
                 status,

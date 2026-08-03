@@ -7,20 +7,21 @@ import com.timetable.backend.domain.dto.UpdateTeacherRequest;
 import com.timetable.backend.domain.dto.WeeklyAvailabilityDTO;
 import com.timetable.backend.domain.mapper.StudentMapper;
 import com.timetable.backend.domain.mapper.TeacherMapper;
-import com.timetable.backend.domain.model.AbstractUser;
-import com.timetable.backend.domain.model.DanceStyle;
-import com.timetable.backend.domain.model.Role;
-import com.timetable.backend.domain.model.Teacher;
+import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.DanceStyleRepository;
+import com.timetable.backend.domain.repository.LessonRepository;
+import com.timetable.backend.domain.repository.RoomRepository;
 import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.UserRepository;
 import com.timetable.backend.domain.repository.WeeklyAvailabilityRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,6 +32,7 @@ public class TeacherService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final DanceStyleRepository danceStyleRepository;
+    private final LessonRepository lessonRepository;
     private final WeeklyAvailabilityRepository weeklyAvailabilityRepository;
     private final TeacherMapper teacherMapper;
     private final StudentMapper studentMapper;
@@ -97,7 +99,25 @@ public class TeacherService {
             }
             teacher.setDanceStyles(new HashSet<>(styles));
         }
-        return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
+        Teacher savedTeacher = teacherRepository.save(teacher);
+        
+
+        List<Lesson> defaultLessons = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            Lesson lesson = new Lesson();
+            lesson.setTeacher(savedTeacher);
+            lesson.setDurationMinutes(60);
+            lesson.setPrivate(true);
+            lesson.setActive(true);
+            lesson.setPinned(false);
+            lesson.setRoom(null);
+            lesson.setTimeslot(null);
+            lesson.setStudent(null);
+            defaultLessons.add(lesson);
+        }
+        lessonRepository.saveAllAndFlush(defaultLessons);
+
+        return teacherMapper.toTeacherResponse(savedTeacher);
     }
     @Transactional(readOnly = true)
     public List<StudentResponse> getMyStudents(String teacherEmail) {
@@ -136,12 +156,12 @@ public class TeacherService {
             teacher.setColorCode(request.colorCode());
         }
         if (request.qualifiedStyleIds() != null) {
-            var requestedStyleIds = new java.util.HashSet<>(request.qualifiedStyleIds());
+            var requestedStyleIds = new HashSet<>(request.qualifiedStyleIds());
             var styles = danceStyleRepository.findAllById(requestedStyleIds);
             if (styles.size() != requestedStyleIds.size()) {
                 throw new IllegalArgumentException("One or more DanceStyle IDs not found");
             }
-            teacher.setDanceStyles(new java.util.HashSet<>(styles));
+            teacher.setDanceStyles(new HashSet<>(styles));
         }
         return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
     }

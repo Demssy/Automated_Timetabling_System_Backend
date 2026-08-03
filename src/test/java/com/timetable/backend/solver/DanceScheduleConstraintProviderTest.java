@@ -598,6 +598,66 @@ class DanceScheduleConstraintProviderTest {
             .penalizesBy(0);
     }
 
+    // --- studentMaxOnePrivateLessonPerDay ---
+
+    @Test
+    @DisplayName("Student max one private lesson/day: Penalty when same student has two private lessons on same day")
+    void penaltyForStudentTwoPrivateLessonsOnSameDay() {
+        Student student = createStudent(100L, "Alice");
+        Teacher teacher1 = createTeacher(1L, "John Doe");
+        Teacher teacher2 = createTeacher(2L, "Jane Smith");
+        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
+
+        Lesson lesson1 = createLesson(1L, teacher1, null, timeslot1, true, false);
+        lesson1.setStudent(student);
+        Lesson lesson2 = createLesson(2L, teacher2, null, timeslot2, true, false);
+        lesson2.setStudent(student);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::studentMaxOnePrivateLessonPerDay)
+            .given(lesson1, lesson2)
+            .penalizesBy(1);
+    }
+
+    @Test
+    @DisplayName("Student max one private lesson/day: No penalty when same student lessons are on different days")
+    void noPenaltyForStudentPrivateLessonsOnDifferentDays() {
+        Student student = createStudent(100L, "Alice");
+        Teacher teacher1 = createTeacher(1L, "John Doe");
+        Teacher teacher2 = createTeacher(2L, "Jane Smith");
+        Timeslot mondayTimeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        Timeslot tuesdayTimeslot = createTimeslot(2L, DayOfWeek.TUESDAY, "09:00", "10:00");
+
+        Lesson mondayLesson = createLesson(1L, teacher1, null, mondayTimeslot, true, false);
+        mondayLesson.setStudent(student);
+        Lesson tuesdayLesson = createLesson(2L, teacher2, null, tuesdayTimeslot, true, false);
+        tuesdayLesson.setStudent(student);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::studentMaxOnePrivateLessonPerDay)
+            .given(mondayLesson, tuesdayLesson)
+            .penalizesBy(0);
+    }
+
+    @Test
+    @DisplayName("Student max one private lesson/day: No penalty for different students on same day")
+    void noPenaltyForDifferentStudentsPrivateLessonsOnSameDay() {
+        Student student1 = createStudent(100L, "Alice");
+        Student student2 = createStudent(101L, "Bob");
+        Teacher teacher1 = createTeacher(1L, "John Doe");
+        Teacher teacher2 = createTeacher(2L, "Jane Smith");
+        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
+        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
+
+        Lesson lesson1 = createLesson(1L, teacher1, null, timeslot1, true, false);
+        lesson1.setStudent(student1);
+        Lesson lesson2 = createLesson(2L, teacher2, null, timeslot2, true, false);
+        lesson2.setStudent(student2);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::studentMaxOnePrivateLessonPerDay)
+            .given(lesson1, lesson2)
+            .penalizesBy(0);
+    }
+
     // --- studentOutsideWeeklyAvailability ---
 
     @Test
@@ -830,4 +890,3 @@ class DanceScheduleConstraintProviderTest {
         return unavailability;
     }
 }
-
