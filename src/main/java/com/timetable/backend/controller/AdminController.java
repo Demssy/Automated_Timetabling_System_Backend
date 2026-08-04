@@ -343,6 +343,14 @@ public class AdminController {
     // Lesson management  —  /api/admin/lessons
     // =========================================================================
 
+    /** Delete a ScheduledLesson from the grid (Hard Delete) without touching the original Lesson template. */
+    @DeleteMapping("/scheduled-lessons/{id}")
+    public ResponseEntity<Void> deleteScheduledLesson(@PathVariable Long id) {
+        lessonService.deleteScheduledLesson(id);
+        return ResponseEntity.noContent().build();
+    }
+
+
     /** Get all lessons (planning entities). */
     @GetMapping("/lessons")
     public ResponseEntity<List<ScheduledLessonDTO>> getAllLessons() {

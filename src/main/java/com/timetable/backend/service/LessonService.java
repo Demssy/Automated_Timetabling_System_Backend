@@ -152,18 +152,44 @@ public class LessonService {
     }
 
     @Transactional
-    public void deleteLesson(Long id) {
-        ScheduledLesson scheduledLesson = scheduledLessonRepository.findById(id).orElse(null);
-        if (scheduledLesson != null && scheduledLesson.getAddedLesson() != null) {
+    public void deleteScheduledLesson(Long id) {
+        ScheduledLesson scheduledLesson = scheduledLessonRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Scheduled lesson not found with id: " + id));
+
+        if (scheduledLesson.getAddedLesson() != null) {
             AddedLesson addedLesson = scheduledLesson.getAddedLesson();
             scheduledLessonRepository.delete(scheduledLesson);
             addedLessonRepository.deleteById(addedLesson.getId());
-            return;
+        } else {
+            scheduledLessonRepository.delete(scheduledLesson);
+        }
+    }
+
+
+    @Transactional
+    public void deleteLesson(Long id) {
+        // 1. Проверяем, пришел ли нам ID из сетки (ScheduledLesson)
+        ScheduledLesson scheduledLesson = scheduledLessonRepository.findById(id).orElse(null);
+
+        if (scheduledLesson != null) {
+            // Если это вручную добавленный урок (AddedLesson), удаляем его полностью
+            if (scheduledLesson.getAddedLesson() != null) {
+                AddedLesson addedLesson = scheduledLesson.getAddedLesson();
+                scheduledLessonRepository.delete(scheduledLesson);
+                addedLessonRepository.deleteById(addedLesson.getId());
+                return;
+            }
+            // Если это сгенерированный урок, извлекаем правильный ID оригинального базового урока
+            if (scheduledLesson.getLesson() != null) {
+                id = scheduledLesson.getLesson().getId();
+            }
         }
 
+        // 2. Теперь переменная id гарантированно содержит правильный идентификатор сущности Lesson
         if (!lessonRepository.existsById(id)) {
             throw new IllegalArgumentException("Lesson not found with id: " + id);
         }
+
         lessonRepository.deleteById(id);
     }
 
