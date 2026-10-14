@@ -41,6 +41,8 @@ class TeacherServiceTest {
     @Mock
     private WeeklyAvailabilityRepository weeklyAvailabilityRepository;
     @Mock
+    private LessonService lessonService;
+    @Mock
     private TeacherMapper teacherMapper;
     @Mock
     private StudentMapper studentMapper;
@@ -80,6 +82,7 @@ class TeacherServiceTest {
         assertNotNull(result);
         assertEquals(1L, result.id());
         verify(teacherRepository).save(any(Teacher.class));
+        verify(lessonService).createDefaultPrivateLessonTemplates(any(), eq(5));
         verify(existingUser).setRole(teacherRole);
     }
 

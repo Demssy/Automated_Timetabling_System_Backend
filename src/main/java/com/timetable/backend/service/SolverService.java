@@ -219,7 +219,7 @@ public class SolverService {
         // Step 3: compare desired (availability windows) vs assigned for each student
         return allSubscribedStudents.stream()
             .map(student -> {
-                int desired = weeklyAvailabilityRepository.findByUserId(student.getId()).size();
+                int desired = weeklyAvailabilityRepository.findByUserIdAndAvailabilityRole(student.getId(), AvailabilityRole.STUDENT).size();
                 int assigned = assignedByStudent.getOrDefault(student.getId(), 0);
                 int missing = desired - assigned;
                 return new UnmetStudentDTO(

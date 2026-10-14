@@ -591,6 +591,7 @@ class SolverConstraintEdgeCaseTest {
         WeeklyAvailability wa = new WeeklyAvailability();
         wa.setId(id);
         wa.setUser(user);
+        wa.setAvailabilityRole(user instanceof Student ? AvailabilityRole.STUDENT : AvailabilityRole.TEACHER);
         wa.setDayOfWeek(day);
         wa.setStartTime(LocalTime.parse(start));
         wa.setEndTime(LocalTime.parse(end));

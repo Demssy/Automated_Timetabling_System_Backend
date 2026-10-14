@@ -1,6 +1,7 @@
 package com.timetable.backend.controller;
 
 import com.timetable.backend.domain.dto.ResourceUnavailabilityDTO;
+import com.timetable.backend.domain.model.AvailabilityRole;
 import com.timetable.backend.service.ResourceUnavailabilityService;
 import com.timetable.backend.service.UserService;
 import jakarta.validation.Valid;
@@ -29,6 +30,7 @@ public class ResourceUnavailabilityController {
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER', 'STUDENT')")
     public ResponseEntity<List<ResourceUnavailabilityDTO>> getByUserId(
             @PathVariable Long userId,
+            @RequestParam(required = false) AvailabilityRole role,
             Authentication authentication) {
 
         if (!isAdmin(authentication)) {
@@ -38,7 +40,7 @@ public class ResourceUnavailabilityController {
             }
         }
 
-        return ResponseEntity.ok(service.getByUserId(userId));
+        return ResponseEntity.ok(role == null ? service.getByUserId(userId) : service.getByUserId(userId, role));
     }
 
     /**

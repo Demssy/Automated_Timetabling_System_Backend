@@ -32,12 +32,11 @@ public interface ScheduledLessonRepository extends JpaRepository<ScheduledLesson
      * Sorting is handled in the service layer.
      */
     @Query("""
-        SELECT sl FROM ScheduledLesson sl
+        SELECT DISTINCT sl FROM ScheduledLesson sl
+        LEFT JOIN sl.lesson l
+        LEFT JOIN sl.addedLesson al
         WHERE sl.schedule.id = :scheduleId
-          AND (
-            (sl.lesson IS NOT NULL AND sl.lesson.teacher.id = :teacherId)
-            OR (sl.addedLesson IS NOT NULL AND sl.addedLesson.teacher.id = :teacherId)
-          )
+          AND (l.teacher.id = :teacherId OR al.teacher.id = :teacherId)
         """)
     List<ScheduledLesson> findByScheduleIdAndTeacherId(
         @Param("scheduleId") Long scheduleId,
@@ -53,13 +52,17 @@ public interface ScheduledLessonRepository extends JpaRepository<ScheduledLesson
      */
     @Query("""
         SELECT DISTINCT sl FROM ScheduledLesson sl
-        LEFT JOIN sl.lesson.danceGroup.enrolledStudents es
-        LEFT JOIN sl.addedLesson.danceGroup.enrolledStudents aes
+        LEFT JOIN sl.lesson l
+        LEFT JOIN l.danceGroup lg
+        LEFT JOIN lg.enrolledStudents es
+        LEFT JOIN sl.addedLesson al
+        LEFT JOIN al.danceGroup ag
+        LEFT JOIN ag.enrolledStudents aes
         WHERE sl.schedule.id = :scheduleId
           AND (
             sl.student.id = :studentId
-            OR (sl.lesson IS NOT NULL AND sl.lesson.isPrivate = false AND es.id = :studentId)
-            OR (sl.addedLesson IS NOT NULL AND sl.addedLesson.isPrivate = false AND aes.id = :studentId)
+            OR (l.isPrivate = false AND es.id = :studentId)
+            OR (al.isPrivate = false AND aes.id = :studentId)
           )
         """)
     List<ScheduledLesson> findByScheduleIdAndStudentId(

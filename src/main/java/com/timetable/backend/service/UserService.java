@@ -3,6 +3,7 @@ package com.timetable.backend.service;
 import com.timetable.backend.domain.dto.UpdateUserRequest;
 import com.timetable.backend.domain.dto.UserResponse;
 import com.timetable.backend.domain.model.AbstractUser;
+import com.timetable.backend.domain.model.AvailabilityRole;
 import com.timetable.backend.domain.model.ResourceUnavailability;
 import com.timetable.backend.domain.model.Role;
 import com.timetable.backend.domain.model.WeeklyAvailability;
@@ -69,6 +70,22 @@ public class UserService {
         resourceUnavailabilityService.updateUserExceptions(id, request.oneTimeUnavailabilities());
 
         return getUserById(id); // Return updated profile
+    }
+
+    /**
+     * Replaces weekly availability and one-time exceptions of the user for one role only.
+     * Unlike the role-less variant, an empty list reliably clears just that role's data.
+     */
+    @Transactional
+    public UserResponse updateUserAvailability(Long id, AvailabilityRole role, UpdateAvailabilityRequest request) {
+        if (!userRepository.existsById(id)) {
+            throw new EntityNotFoundException("User not found with id: " + id);
+        }
+
+        weeklyAvailabilityService.updateUserSchedule(id, role, request.weeklyAvailabilities());
+        resourceUnavailabilityService.updateUserExceptions(id, role, request.oneTimeUnavailabilities());
+
+        return getUserById(id);
     }
 
     @Transactional(readOnly = true)
@@ -139,6 +156,7 @@ public class UserService {
             Role role = roleRepository.findByName(request.role())
                     .orElseThrow(() -> new IllegalArgumentException("Role not found: " + request.role()));
             user.setRole(role);
+            user.setRoles(new java.util.HashSet<>(java.util.Set.of(role)));
         }
 
         return mapToUserResponse(user);
@@ -182,8 +200,9 @@ public class UserService {
                 user.getFullName(),
                 user.getRole().getName(),
                 user.isActive(),
-                weekly,      // NEW
-                exceptions   // NEW
+                weekly,
+                exceptions,
+                user.getRoleNames().stream().map(name -> "ROLE_" + name).collect(Collectors.toCollection(java.util.LinkedHashSet::new))
         );
     }
 
@@ -192,7 +211,8 @@ public class UserService {
                 entity.getId(),
                 entity.getDayOfWeek(),
                 entity.getStartTime(),
-                entity.getEndTime()
+                entity.getEndTime(),
+                entity.getAvailabilityRole()
         );
     }
 
@@ -202,7 +222,8 @@ public class UserService {
                 entity.getDate(),
                 entity.getStartTime(),
                 entity.getEndTime(),
-                entity.getReason()
+                entity.getReason(),
+                entity.getAvailabilityRole()
         );
     }
 }

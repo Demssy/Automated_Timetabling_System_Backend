@@ -11,6 +11,7 @@ import com.timetable.backend.domain.repository.DanceStyleRepository;
 import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -32,10 +33,12 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final TeacherRepository teacherRepository;
     private final DanceStyleRepository danceStyleRepository;
+    private final LessonService lessonService;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     // Lazy delegation — no circular dependency: AuthService → UserService → repositories
     private final UserService userService;
+    private final EntityManager entityManager;
 
     /**
      * Registers a new user with the given role.
@@ -76,6 +79,7 @@ public class AuthService {
         student.setPasswordHash(passwordEncoder.encode(request.password()));
         student.setFullName(request.fullName());
         student.setRole(studentRole);
+        student.addRole(studentRole);
         student.setBirthDate(request.birthDate());
         student.setActive(true);
         student.setDanceLevel(request.danceLevel());
@@ -107,8 +111,11 @@ public class AuthService {
         baseUser.setPasswordHash(passwordEncoder.encode(request.password()));
         baseUser.setFullName(request.fullName());
         baseUser.setRole(teacherRole);
+        baseUser.addRole(teacherRole);
         baseUser.setActive(true);
-
+        if (request.alsoStudent()) {
+            baseUser.addRole(resolveRole("STUDENT"));
+        }
         AbstractUser savedUser = userRepository.saveAndFlush(baseUser);
 
         // 2. Resolve dance style entities by ID or name
@@ -121,10 +128,47 @@ public class AuthService {
         teacher.setBio(request.bio());
         teacher.setDanceStyles(styles);
 
-        teacherRepository.save(teacher);
-        log.info("Registered new TEACHER (pending approval): {}", request.email());
+        Teacher savedTeacher = teacherRepository.save(teacher);
+        lessonService.createDefaultPrivateLessonTemplates(savedTeacher, 5);
 
+        if (request.alsoStudent()) {
+            createStudentProfile(savedUser.getId(), request);
+        }
+
+        log.info("Registered new TEACHER{}: {}", request.alsoStudent() ? " (also STUDENT)" : "", request.email());
         return userService.getCurrentUserInfo(request.email());
+    }
+
+    /**
+     * Adds a Student profile row to an existing user row.
+     * Student is a JOINED subclass of the user entity, so Hibernate cannot attach it to an
+     * already persisted base row; the 'students' row is inserted with native SQL instead.
+     */
+    private void createStudentProfile(Long userId, RegisterRequest request) {
+        var level = request.studentLevel() != null ? request.studentLevel() : request.danceLevel();
+
+        entityManager.createNativeQuery(
+                        "INSERT INTO students (id, birth_date, dance_level, parent_contact, desired_lessons_per_week) "
+                                + "VALUES (:id, :birthDate, :level, :parentContact, :desired)")
+                .setParameter("id", userId)
+                .setParameter("birthDate", request.birthDate())
+                .setParameter("level", level != null ? level.name() : null)
+                .setParameter("parentContact", request.parentContact())
+                .setParameter("desired", request.desiredLessonsPerWeek())
+                .executeUpdate();
+
+        if (request.studentPreferredStyleIds() != null) {
+            for (Long styleId : request.studentPreferredStyleIds()) {
+                if (!danceStyleRepository.existsById(styleId)) {
+                    throw new IllegalArgumentException("Unknown dance style with ID: " + styleId);
+                }
+                entityManager.createNativeQuery(
+                                "INSERT INTO student_dance_style (student_id, dance_style_id) VALUES (:sid, :styleId)")
+                        .setParameter("sid", userId)
+                        .setParameter("styleId", styleId)
+                        .executeUpdate();
+            }
+        }
     }
 
     private Role resolveRole(String name) {

@@ -27,6 +27,9 @@ public interface LessonRepository extends JpaRepository<Lesson, Long> {
 
 	Lesson findById(long id);
 
+	// Count existing private lesson templates for a specific teacher
+	long countByTeacherIdAndDanceGroupIsNull(Long teacherId);
+
 	/**
 	 * Finds all active group (non-private) lessons for a given dance group.
 	 * Used to build the weekly schedule shown on the Groups page.

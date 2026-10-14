@@ -7,6 +7,7 @@ import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 import ai.timefold.solver.core.api.score.stream.Joiners;
 import com.timetable.backend.config.SolverWeightsConfig;
+import com.timetable.backend.domain.model.AvailabilityRole;
 import com.timetable.backend.domain.model.Lesson;
 import com.timetable.backend.domain.model.ResourceUnavailability;
 import com.timetable.backend.domain.model.Student;
@@ -91,6 +92,8 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
 
                 // Hard constraints — teacher
                 teacherConflict(constraintFactory),
+                teacherStudentTimeslotConflict(constraintFactory),
+                teacherCannotTeachEnrolledGroup(constraintFactory),
                 maxTeacherLessonsPerDay(constraintFactory),
 
                 // Teacher availability constraints
@@ -193,6 +196,53 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     }
 
     /**
+     * HARD CONSTRAINT: Teacher-Student Timeslot Conflict (dual-role users)
+     *
+     * A user who teaches lesson A and attends lesson B as a student (private student, or
+     * member of the group of lesson B) cannot have both lessons in the same timeslot.
+     */
+    Constraint teacherStudentTimeslotConflict(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
+                                .filter(lesson -> lesson.getTimeslot() != null),
+                        Joiners.equal(Lesson::getTimeslot),
+                        Joiners.filtering((teaching, attended) -> teaching != attended
+                                && attendsAsStudent(attended, teaching.getTeacher().getId()))
+                )
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Teacher attends another lesson as student at the same time");
+    }
+
+    /**
+     * HARD CONSTRAINT: Teacher Cannot Teach A Group They Are Enrolled In (also covers
+     * a teacher being the private student of their own lesson).
+     */
+    Constraint teacherCannotTeachEnrolledGroup(ConstraintFactory constraintFactory) {
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.getTeacher() != null
+                        && attendsAsStudent(lesson, lesson.getTeacher().getId()))
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Teacher cannot teach a lesson they attend as student");
+    }
+
+    /** True if the user with the given id attends the lesson as a student (private or group member). */
+    private static boolean attendsAsStudent(Lesson lesson, Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        if (lesson.getStudent() != null && userId.equals(lesson.getStudent().getId())) {
+            return true;
+        }
+        return lesson.getDanceGroup() != null
+                && lesson.getDanceGroup().getEnrolledStudents() != null
+                && lesson.getDanceGroup().getEnrolledStudents().stream()
+                        .anyMatch(student -> userId.equals(student.getId()));
+    }
+
+    /**
      * HARD CONSTRAINT: Max 6 Lessons Per Teacher Per Day
      *
      * A teacher cannot physically conduct more than 6 lessons in a single day.
@@ -231,6 +281,8 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .ifNotExists(WeeklyAvailability.class,
                         // Match the teacher by comparing their shared AbstractUser
                         Joiners.equal(lesson -> lesson.getTeacher().getUser(), WeeklyAvailability::getUser),
+                        // Only availability declared for the TEACHER role counts
+                        Joiners.equal(lesson -> AvailabilityRole.TEACHER, WeeklyAvailability::getAvailabilityRole),
                         // Match the day of the week
                         Joiners.equal(lesson -> lesson.getTimeslot().getDayOfWeek(), WeeklyAvailability::getDayOfWeek),
                         // Ensure the availability window fully covers the timeslot
@@ -251,7 +303,8 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.getTimeslot() != null)
                 .join(ResourceUnavailability.class,
-                        Joiners.equal(lesson -> lesson.getTeacher().getUser(), ResourceUnavailability::getUser)
+                        Joiners.equal(lesson -> lesson.getTeacher().getUser(), ResourceUnavailability::getUser),
+                        Joiners.equal(lesson -> AvailabilityRole.TEACHER, ResourceUnavailability::getAvailabilityRole)
                 )
                 .join(LocalDate.class)
                 .filter((lesson, unavail, scheduleStartDate) -> {
@@ -354,6 +407,8 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .filter(lesson -> lesson.isPrivate() && lesson.getStudent() != null && lesson.getTimeslot() != null)
                 .ifNotExists(WeeklyAvailability.class,
                         Joiners.equal(Lesson::getStudent, WeeklyAvailability::getUser),
+                        // Only availability declared for the STUDENT role counts
+                        Joiners.equal(lesson -> AvailabilityRole.STUDENT, WeeklyAvailability::getAvailabilityRole),
                         Joiners.equal(lesson -> lesson.getTimeslot().getDayOfWeek(), WeeklyAvailability::getDayOfWeek),
                         Joiners.filtering((lesson, availability) ->
                                 !lesson.getTimeslot().getStartTime().isBefore(availability.getStartTime()) &&
@@ -373,7 +428,8 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.isPrivate() && lesson.getStudent() != null && lesson.getTimeslot() != null)
                 .join(ResourceUnavailability.class,
-                        Joiners.equal(Lesson::getStudent, ResourceUnavailability::getUser)
+                        Joiners.equal(Lesson::getStudent, ResourceUnavailability::getUser),
+                        Joiners.equal(lesson -> AvailabilityRole.STUDENT, ResourceUnavailability::getAvailabilityRole)
                 )
                 .join(LocalDate.class)
                 .filter((lesson, unavail, scheduleStartDate) -> {
@@ -549,6 +605,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 // Phase 2: join with WeeklyAvailability to enumerate windows for (student, day)
                 .join(WeeklyAvailability.class,
                         Joiners.equal((key, count) -> key.student(), WeeklyAvailability::getUser),
+                        Joiners.equal((key, count) -> AvailabilityRole.STUDENT, WeeklyAvailability::getAvailabilityRole),
                         Joiners.equal((key, count) -> key.day(), WeeklyAvailability::getDayOfWeek)
                 )
                 // TriConstraintStream<StudentDay, Integer lessonCount, WeeklyAvailability>

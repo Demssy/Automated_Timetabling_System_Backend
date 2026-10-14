@@ -416,6 +416,7 @@ class SolverIntegrationTest {
                 WeeklyAvailability wa = new WeeklyAvailability();
                 wa.setId(waId++);
                 wa.setUser(student);
+                wa.setAvailabilityRole(AvailabilityRole.STUDENT);
                 wa.setDayOfWeek(day);
                 wa.setStartTime(LocalTime.of(16, 0));
                 wa.setEndTime(LocalTime.of(20, 0));

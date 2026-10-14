@@ -34,6 +34,7 @@ public class TeacherService {
     private final DanceStyleRepository danceStyleRepository;
     private final LessonRepository lessonRepository;
     private final WeeklyAvailabilityRepository weeklyAvailabilityRepository;
+    private final LessonService lessonService;
     private final TeacherMapper teacherMapper;
     private final StudentMapper studentMapper;
     @Transactional(readOnly = true)
@@ -85,6 +86,7 @@ public class TeacherService {
         }
         Role teacherRole = roleRepository.findByName("TEACHER")
                 .orElseGet(() -> roleRepository.save(new Role(null, "TEACHER")));
+        user.addRole(teacherRole);
         user.setRole(teacherRole);
         AbstractUser managedUser = userRepository.saveAndFlush(user);
         Teacher teacher = new Teacher();
@@ -100,22 +102,7 @@ public class TeacherService {
             teacher.setDanceStyles(new HashSet<>(styles));
         }
         Teacher savedTeacher = teacherRepository.save(teacher);
-        
-
-        List<Lesson> defaultLessons = new ArrayList<>();
-        for (int i = 0; i < 8; i++) {
-            Lesson lesson = new Lesson();
-            lesson.setTeacher(savedTeacher);
-            lesson.setDurationMinutes(60);
-            lesson.setPrivate(true);
-            lesson.setActive(true);
-            lesson.setPinned(false);
-            lesson.setRoom(null);
-            lesson.setTimeslot(null);
-            lesson.setStudent(null);
-            defaultLessons.add(lesson);
-        }
-        lessonRepository.saveAllAndFlush(defaultLessons);
+        lessonService.createDefaultPrivateLessonTemplates(savedTeacher, 5);
 
         return teacherMapper.toTeacherResponse(savedTeacher);
     }
@@ -198,13 +185,14 @@ public class TeacherService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Student not found with id: " + studentId);
         }
 
-        List<WeeklyAvailabilityDTO> dtos = weeklyAvailabilityRepository.findByUserId(studentId)
+        List<WeeklyAvailabilityDTO> dtos = weeklyAvailabilityRepository.findByUserIdAndAvailabilityRole(studentId, AvailabilityRole.STUDENT)
                 .stream()
                 .map(w -> new WeeklyAvailabilityDTO(
                         w.getId(),
                         w.getDayOfWeek(),
                         w.getStartTime(),
-                        w.getEndTime()))
+                        w.getEndTime(),
+                        w.getAvailabilityRole()))
                 .toList();
 
         return new StudentAvailabilityResponse(dtos);

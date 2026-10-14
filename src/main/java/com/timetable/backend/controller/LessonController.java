@@ -2,6 +2,7 @@ package com.timetable.backend.controller;
 
 import com.timetable.backend.domain.dto.CreateLessonRequest;
 import com.timetable.backend.domain.dto.ScheduledLessonDTO;
+import com.timetable.backend.domain.model.AvailabilityRole;
 import com.timetable.backend.service.LessonService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -42,11 +43,32 @@ public class LessonController {
      *   <li>TEACHER — all lessons (private and group) that they teach.</li>
      * </ul>
      * Data is sourced from the {@code scheduled_lessons} snapshot table only.
+     *
+     * <p>Dual-role users can pass {@code ?role=TEACHER|STUDENT} to choose which side of their
+     * schedule is returned; without it TEACHER is used when the caller is a teacher.</p>
      */
     @GetMapping("/my-schedule")
     @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER')")
-    public ResponseEntity<List<ScheduledLessonDTO>> getMySchedule(Authentication authentication) {
-        return ResponseEntity.ok(lessonService.getMySchedule(authentication));
+    public ResponseEntity<List<ScheduledLessonDTO>> getMySchedule(
+            @RequestParam(required = false) AvailabilityRole role,
+            Authentication authentication) {
+        return ResponseEntity.ok(role == null
+                ? lessonService.getMySchedule(authentication)
+                : lessonService.getMySchedule(authentication, role));
+    }
+
+    /** GET /api/lessons/my-teaching - lessons the current user teaches. */
+    @GetMapping("/my-teaching")
+    @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER')")
+    public ResponseEntity<List<ScheduledLessonDTO>> getMyTeaching(Authentication authentication) {
+        return ResponseEntity.ok(lessonService.getMySchedule(authentication, AvailabilityRole.TEACHER));
+    }
+
+    /** GET /api/lessons/my-learning - lessons the current user attends as a student. */
+    @GetMapping("/my-learning")
+    @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER')")
+    public ResponseEntity<List<ScheduledLessonDTO>> getMyLearning(Authentication authentication) {
+        return ResponseEntity.ok(lessonService.getMySchedule(authentication, AvailabilityRole.STUDENT));
     }
 
     @GetMapping("/{id}")

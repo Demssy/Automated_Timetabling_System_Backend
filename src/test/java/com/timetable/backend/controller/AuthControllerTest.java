@@ -6,6 +6,7 @@ import com.timetable.backend.domain.dto.AuthenticationRequest;
 import com.timetable.backend.domain.dto.RegisterRequest;
 import com.timetable.backend.domain.dto.UserResponse;
 import com.timetable.backend.domain.dto.UserRole;
+import com.timetable.backend.domain.model.DanceLevel;
 import com.timetable.backend.security.JwtAuthenticationFilter;
 import com.timetable.backend.security.JwtService;
 import com.timetable.backend.service.AuthService;
@@ -20,7 +21,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
+import static org.hamcrest.Matchers.hasItems;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -151,5 +154,31 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("TEACHER"))
                 .andExpect(jsonPath("$.isActive").value(true));
+    }
+
+    @Test
+    void register_TeacherAlsoStudent_ShouldReturnBothRoles() throws Exception {
+        var request = new RegisterRequest(
+                "dual@test.com", "password123", "Dual Role", LocalDate.of(1992, 3, 10),
+                UserRole.TEACHER, null, null, null, "+1555000111", List.of("SALSA"), "Bio",
+                true, DanceLevel.BEGINNER, Set.of(1L));
+        var userResponse = new UserResponse(3L, "dual@test.com", "Dual Role", "TEACHER", true,
+                List.of(), List.of(), Set.of("ROLE_TEACHER", "ROLE_STUDENT"));
+
+        when(authService.register(any(RegisterRequest.class))).thenReturn(userResponse);
+        when(jwtService.getExpirationMs()).thenReturn(3600000L);
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("TEACHER"))
+                .andExpect(jsonPath("$.roles", hasItems("ROLE_TEACHER", "ROLE_STUDENT")));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(RegisterRequest.class);
+        org.mockito.Mockito.verify(authService).register(captor.capture());
+        org.junit.jupiter.api.Assertions.assertTrue(captor.getValue().alsoStudent());
+        org.junit.jupiter.api.Assertions.assertEquals(DanceLevel.BEGINNER, captor.getValue().studentLevel());
+        org.junit.jupiter.api.Assertions.assertEquals(Set.of(1L), captor.getValue().studentPreferredStyleIds());
     }
 }

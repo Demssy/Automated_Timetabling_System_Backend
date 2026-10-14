@@ -7,6 +7,7 @@ import com.timetable.backend.domain.mapper.LessonMapper;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class LessonService {
 
     private final LessonRepository lessonRepository;
@@ -34,6 +36,42 @@ public class LessonService {
     private final LessonMapper lessonMapper;
     private final ScheduledLessonRepository scheduledLessonRepository;
     private final UserRepository userRepository;
+    private final DanceStyleRepository danceStyleRepository;
+
+    /** Creates missing private lesson templates so the teacher has {@code targetCount} of them. */
+    @Transactional
+    public void createDefaultPrivateLessonTemplates(Teacher teacher, int targetCount) {
+        long existingCount = lessonRepository.countByTeacherIdAndDanceGroupIsNull(teacher.getId());
+        long needed = targetCount - existingCount;
+        if (needed <= 0) {
+            return;
+        }
+
+        DanceStyle style = teacher.getDanceStyles().stream().findFirst()
+                .orElseGet(() -> danceStyleRepository.findAll().stream().findFirst().orElse(null));
+        if (style == null) {
+            log.warn("No dance styles available; skipping private lesson templates for teacher {}", teacher.getId());
+            return;
+        }
+
+        List<Lesson> templates = new java.util.ArrayList<>();
+        for (long i = 0; i < needed; i++) {
+            Lesson lesson = new Lesson();
+            lesson.setTeacher(teacher);
+            lesson.setDanceStyle(style);
+            lesson.setDanceGroup(null);
+            lesson.setStudent(null);
+            lesson.setTimeslot(null);
+            lesson.setRoom(null);
+            lesson.setDurationMinutes(60);
+            lesson.setPrivate(true);
+            lesson.setActive(true);
+            lesson.setPinned(false);
+            templates.add(lesson);
+        }
+        lessonRepository.saveAll(templates);
+    }
+
     @Transactional(readOnly = true)
     public List<ScheduledLessonDTO> getAllLessons() {
         return lessonRepository.findAll().stream()
@@ -294,21 +332,37 @@ public class LessonService {
      */
     @Transactional(readOnly = true)
     public List<ScheduledLessonDTO> getMySchedule(Authentication authentication) {
+        boolean isTeacher = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_TEACHER"));
+        return getMySchedule(authentication, isTeacher ? AvailabilityRole.TEACHER : AvailabilityRole.STUDENT);
+    }
+
+    /**
+     * Same as {@link #getMySchedule(Authentication)} but for an explicit role, so that dual-role
+     * users can fetch the lessons they teach (TEACHER) or attend (STUDENT) separately.
+     *
+     * @throws ResponseStatusException 403 if the caller does not hold the requested role
+     */
+    @Transactional(readOnly = true)
+    public List<ScheduledLessonDTO> getMySchedule(Authentication authentication, AvailabilityRole role) {
         String email = authentication.getName();
 
+        // Roles are checked against the database, not the JWT: tokens issued before the user
+        // got a second role (or before V22) would otherwise yield a false 403 for dual-role users.
         AbstractUser user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "User not found: " + email));
+
+        if (!user.hasRole(role.name())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have role " + role.name());
+        }
 
         Long activeScheduleId = resolveActiveScheduleId();
         if (activeScheduleId == null) {
             return List.of();
         }
 
-        boolean isTeacher = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_TEACHER"));
-
-        if (isTeacher) {
+        if (role == AvailabilityRole.TEACHER) {
             Teacher teacher = teacherRepository.findById(user.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                             "Teacher profile not found for: " + email));

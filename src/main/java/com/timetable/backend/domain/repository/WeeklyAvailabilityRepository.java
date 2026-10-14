@@ -1,5 +1,6 @@
 package com.timetable.backend.domain.repository;
 
+import com.timetable.backend.domain.model.AvailabilityRole;
 import com.timetable.backend.domain.model.WeeklyAvailability;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -14,6 +15,14 @@ public interface WeeklyAvailabilityRepository extends JpaRepository<WeeklyAvaila
 
     // Find weekly schedule for a specific user
     List<WeeklyAvailability> findByUserId(Long userId);
+
+    List<WeeklyAvailability> findByUserIdAndAvailabilityRole(Long userId, AvailabilityRole availabilityRole);
+
+    List<WeeklyAvailability> findByAvailabilityRole(AvailabilityRole availabilityRole);
+
+    @Modifying
+    @Query("DELETE FROM WeeklyAvailability w WHERE w.user.id = :userId AND w.availabilityRole = :role")
+    void deleteByUserIdAndAvailabilityRole(@Param("userId") Long userId, @Param("role") AvailabilityRole role);
 
     /**
      * Bulk delete — single DELETE SQL statement instead of N individual removes.

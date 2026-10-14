@@ -36,7 +36,7 @@ public class AuthController {
 
         var userDetails = org.springframework.security.core.userdetails.User.withUsername(userResponse.email())
                 .password("")
-                .roles(userResponse.role())
+                .authorities(userResponse.roles().toArray(new String[0]))
                 .build();
         String token = jwtService.generateToken(userDetails);
 
@@ -50,7 +50,7 @@ public class AuthController {
         // Generate token for the authenticated user
         var userDetails = User.withUsername(userResponse.email())
                 .password("")
-                .roles(userResponse.role())
+                .authorities(userResponse.roles().toArray(new String[0]))
                 .build();
         String token = jwtService.generateToken(userDetails);
 

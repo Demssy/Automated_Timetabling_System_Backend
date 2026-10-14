@@ -39,6 +39,10 @@ public class Lesson {
     @JoinColumn(name = "dance_group_id", nullable = true)
     private DanceGroup danceGroup;
 
+    @ManyToOne
+    @JoinColumn(name = "dance_style_id", nullable = true)
+    private DanceStyle danceStyle;
+
     /** Assigned only for private lessons ({@code isPrivate = true}). Null for group lessons.
      *  {@code nullable = true} tells Timefold that unassigned (null) is a valid planning value,
      *  which lets the solver leave template private lessons without a student if no valid match exists. */

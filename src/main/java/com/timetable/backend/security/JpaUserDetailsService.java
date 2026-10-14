@@ -34,12 +34,14 @@ public class JpaUserDetailsService implements UserDetailsService {
                 true,
                 true,
                 true,
-                mapRoleToAuthorities(user.getRole().getName())
+                mapRoleToAuthorities(user.getRoleNames())
         );
     }
 
-    private Collection<? extends GrantedAuthority> mapRoleToAuthorities(String roleName) {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + roleName));
+    private Collection<? extends GrantedAuthority>     mapRoleToAuthorities(Collection<String> roleNames) {
+            return roleNames.stream()
+                    .map(name -> new SimpleGrantedAuthority("ROLE_" + name))
+                    .toList();
     }
 }
 

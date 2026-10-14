@@ -2,6 +2,7 @@ package com.timetable.backend.controller;
 
 import com.timetable.backend.domain.dto.UpdateAvailabilityRequest;
 import com.timetable.backend.domain.dto.UserResponse;
+import com.timetable.backend.domain.model.AvailabilityRole;
 import com.timetable.backend.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -41,11 +43,14 @@ public class UserController {
     @PutMapping("/me/availability")
     public ResponseEntity<UserResponse> updateMyAvailability(
             Authentication authentication,
+            @RequestParam(required = false) AvailabilityRole role,
             @RequestBody @Valid UpdateAvailabilityRequest request) {
 
         String email = authentication.getName();
         UserResponse currentUser = userService.getCurrentUserInfo(email);
-        UserResponse updated = userService.updateUserAvailability(currentUser.id(), request);
+        UserResponse updated = role == null
+                ? userService.updateUserAvailability(currentUser.id(), request)
+                : userService.updateUserAvailability(currentUser.id(), role, request);
         return ResponseEntity.ok(updated);
     }
 }

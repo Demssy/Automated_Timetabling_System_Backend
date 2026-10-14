@@ -20,7 +20,7 @@ public class Admin extends AbstractUser {
     private boolean hasBillingAccess = false;
 
     public Admin(Long id, String email, String passwordHash, String fullName, Role role, boolean isActive, boolean hasBillingAccess) {
-        super(id, email, passwordHash, fullName, role, isActive);
+        super(id, email, passwordHash, fullName, role, new java.util.HashSet<>(), isActive);
         this.hasBillingAccess = hasBillingAccess;
     }
 }

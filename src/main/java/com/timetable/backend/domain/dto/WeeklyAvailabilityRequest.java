@@ -1,5 +1,6 @@
 package com.timetable.backend.domain.dto;
 
+import com.timetable.backend.domain.model.AvailabilityRole;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.DayOfWeek;
@@ -21,6 +22,13 @@ public record WeeklyAvailabilityRequest(
         LocalTime startTime,
 
         @NotNull(message = "End time is required")
-        LocalTime endTime
-) {}
+        LocalTime endTime,
+
+        AvailabilityRole availabilityRole
+) {
+    /** Convenience constructor; a null role means "use the user's default role". */
+    public WeeklyAvailabilityRequest(DayOfWeek dayOfWeek, LocalTime startTime, LocalTime endTime) {
+        this(dayOfWeek, startTime, endTime, null);
+    }
+}
 

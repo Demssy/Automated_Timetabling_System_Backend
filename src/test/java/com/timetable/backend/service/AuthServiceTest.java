@@ -26,6 +26,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +35,7 @@ class AuthServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private RoleRepository roleRepository;
     @Mock private TeacherRepository teacherRepository;
+    @Mock private LessonService lessonService;
     @Mock private DanceStyleRepository danceStyleRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private AuthenticationManager authenticationManager;
@@ -148,6 +150,7 @@ class AuthServiceTest {
         assertEquals("TEACHER", response.role());
         assertTrue(response.isActive());
         verify(teacherRepository).save(any());
+        verify(lessonService).createDefaultPrivateLessonTemplates(any(), eq(5));
         verify(userService).getCurrentUserInfo(email);
     }
 

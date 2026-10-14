@@ -4,6 +4,7 @@ import com.timetable.backend.domain.model.DanceLevel;
 import jakarta.validation.constraints.*;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 /**
  * DTO for public self-registration.
@@ -32,7 +33,6 @@ public record RegisterRequest(
     UserRole role,
 
     // ── Student-only ──────────────────────────────────────────────────────────
-    /** Dance skill level; optional for students. */
     DanceLevel danceLevel,
 
     /** Emergency/parent contact; recommended when the student is under 18. */
@@ -56,5 +56,25 @@ public record RegisterRequest(
     List<?> qualifiedStyleIds,
 
     /** Short teacher biography shown on the public profile. */
-    String bio
-) {}
+    String bio,
+
+    // -- Dual role (TEACHER who also attends lessons as a STUDENT) --
+
+    /** When true and role == TEACHER, the account also gets the STUDENT role and a student profile. */
+    boolean alsoStudent,
+
+    /** Dance level of the student profile; falls back to {@code danceLevel} when null. */
+    DanceLevel studentLevel,
+
+    /** Dance styles the user wants to learn as a student (optional). */
+    Set<Long> studentPreferredStyleIds
+) {
+    /** Convenience constructor for single-role registration. */
+    public RegisterRequest(
+            String email, String password, String fullName, LocalDate birthDate, UserRole role,
+            DanceLevel danceLevel, String parentContact, Integer desiredLessonsPerWeek,
+            String phone, List<?> qualifiedStyleIds, String bio) {
+        this(email, password, fullName, birthDate, role, danceLevel, parentContact, desiredLessonsPerWeek,
+                phone, qualifiedStyleIds, bio, false, null, null);
+    }
+}

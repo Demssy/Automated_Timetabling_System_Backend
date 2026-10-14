@@ -37,4 +37,8 @@ public class ResourceUnavailability {
 
     @Column(name = "reason")
     private String reason;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "availability_role", nullable = false, length = 20)
+    private AvailabilityRole availabilityRole = AvailabilityRole.TEACHER;
 }

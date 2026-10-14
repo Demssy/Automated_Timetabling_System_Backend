@@ -46,6 +46,16 @@ public class Student extends AbstractUser {
     @ToString.Exclude
     private Set<DanceGroup> enrolledGroups = new HashSet<>();
 
+    /** Dance styles the student wants to learn (table 'student_dance_style'). */
+    @ManyToMany
+    @JoinTable(
+        name = "student_dance_style",
+        joinColumns = @JoinColumn(name = "student_id"),
+        inverseJoinColumns = @JoinColumn(name = "dance_style_id")
+    )
+    @ToString.Exclude
+    private Set<DanceStyle> preferredStyles = new HashSet<>();
+
 }
 
 

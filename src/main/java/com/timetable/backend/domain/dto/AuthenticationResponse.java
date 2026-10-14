@@ -1,5 +1,11 @@
 package com.timetable.backend.domain.dto;
 
-public record AuthenticationResponse(String token) {
+import java.util.Set;
+
+public record AuthenticationResponse(String token, Set<String> roles) {
+
+    public AuthenticationResponse(String token) {
+        this(token, Set.of());
+    }
 }
 

@@ -30,4 +30,8 @@ public class WeeklyAvailability {
 
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "availability_role", nullable = false, length = 20)
+    private AvailabilityRole availabilityRole = AvailabilityRole.TEACHER;
 }

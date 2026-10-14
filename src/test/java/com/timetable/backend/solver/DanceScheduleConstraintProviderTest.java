@@ -235,6 +235,143 @@ class DanceScheduleConstraintProviderTest {
             .penalizesBy(0);
     }
 
+    // ==================== HARD CONSTRAINT: Teacher Also Student (dual role) ====================
+
+    /** Student profile that shares its id with the given teacher (same user account). */
+    private Student createStudentProfileOf(Teacher teacher) {
+        return createStudent(teacher.getId(), teacher.getUser().getFullName());
+    }
+
+    @Test
+    @DisplayName("Teacher-student conflict: teacher attends a group lesson while teaching another one")
+    void penaltyForTeacherAttendingGroupWhileTeaching() {
+        Teacher dualTeacher = createTeacher(1L, "Dual Role");
+        Teacher otherTeacher = createTeacher(2L, "Other Teacher");
+        Student dualStudent = createStudentProfileOf(dualTeacher);
+        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
+
+        DanceGroup taughtGroup = createDanceGroup(1L, "Taught");
+        DanceGroup attendedGroup = createDanceGroup(2L, "Attended");
+        attendedGroup.getEnrolledStudents().add(dualStudent);
+
+        Lesson teaching = createLesson(1L, dualTeacher, taughtGroup, timeslot, false, true);
+        Lesson attending = createLesson(2L, otherTeacher, attendedGroup, timeslot, false, true);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherStudentTimeslotConflict)
+                .given(teaching, attending, dualTeacher, otherTeacher, dualStudent, timeslot)
+                .penalizesBy(1);
+    }
+
+    @Test
+    @DisplayName("Teacher-student conflict: teacher is the private student of another lesson at the same time")
+    void penaltyForTeacherAttendingPrivateWhileTeaching() {
+        Teacher dualTeacher = createTeacher(1L, "Dual Role");
+        Teacher otherTeacher = createTeacher(2L, "Other Teacher");
+        Student dualStudent = createStudentProfileOf(dualTeacher);
+        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
+
+        Lesson teaching = createLesson(1L, dualTeacher, createDanceGroup(1L, "Taught"), timeslot, false, true);
+        Lesson attending = createLesson(2L, otherTeacher, null, timeslot, true, false);
+        attending.setStudent(dualStudent);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherStudentTimeslotConflict)
+                .given(teaching, attending, dualTeacher, otherTeacher, dualStudent, timeslot)
+                .penalizesBy(1);
+    }
+
+    @Test
+    @DisplayName("Teacher-student conflict: no penalty when the lessons are in different timeslots")
+    void noPenaltyForTeacherAttendingInDifferentTimeslot() {
+        Teacher dualTeacher = createTeacher(1L, "Dual Role");
+        Teacher otherTeacher = createTeacher(2L, "Other Teacher");
+        Student dualStudent = createStudentProfileOf(dualTeacher);
+        Timeslot timeslot1 = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
+        Timeslot timeslot2 = createTimeslot(2L, DayOfWeek.MONDAY, "19:00", "20:00");
+
+        DanceGroup attendedGroup = createDanceGroup(2L, "Attended");
+        attendedGroup.getEnrolledStudents().add(dualStudent);
+
+        Lesson teaching = createLesson(1L, dualTeacher, createDanceGroup(1L, "Taught"), timeslot1, false, true);
+        Lesson attending = createLesson(2L, otherTeacher, attendedGroup, timeslot2, false, true);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherStudentTimeslotConflict)
+                .given(teaching, attending, dualTeacher, otherTeacher, dualStudent, timeslot1, timeslot2)
+                .penalizesBy(0);
+    }
+
+    @Test
+    @DisplayName("Teacher-student conflict: no penalty for a plain student with a different id")
+    void noPenaltyForUnrelatedStudent() {
+        Teacher teacher = createTeacher(1L, "Plain Teacher");
+        Teacher otherTeacher = createTeacher(2L, "Other Teacher");
+        Student plainStudent = createStudent(99L, "Plain Student");
+        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
+
+        DanceGroup attendedGroup = createDanceGroup(2L, "Attended");
+        attendedGroup.getEnrolledStudents().add(plainStudent);
+
+        Lesson teaching = createLesson(1L, teacher, createDanceGroup(1L, "Taught"), timeslot, false, true);
+        Lesson attending = createLesson(2L, otherTeacher, attendedGroup, timeslot, false, true);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherStudentTimeslotConflict)
+                .given(teaching, attending, teacher, otherTeacher, plainStudent, timeslot)
+                .penalizesBy(0);
+    }
+
+    @Test
+    @DisplayName("Self-teaching: teacher cannot teach a group they are enrolled in")
+    void penaltyForTeacherTeachingEnrolledGroup() {
+        Teacher dualTeacher = createTeacher(1L, "Dual Role");
+        Student dualStudent = createStudentProfileOf(dualTeacher);
+        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
+
+        DanceGroup group = createDanceGroup(1L, "Own Group");
+        group.getEnrolledStudents().add(dualStudent);
+        Lesson lesson = createLesson(1L, dualTeacher, group, timeslot, false, true);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherCannotTeachEnrolledGroup)
+                .given(lesson, dualTeacher, dualStudent, timeslot)
+                .penalizesBy(1);
+    }
+
+    @Test
+    @DisplayName("Self-teaching: no penalty when the teacher is not enrolled in the group")
+    void noPenaltyForTeacherTeachingForeignGroup() {
+        Teacher teacher = createTeacher(1L, "Plain Teacher");
+        Student otherStudent = createStudent(99L, "Plain Student");
+        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
+
+        DanceGroup group = createDanceGroup(1L, "Group");
+        group.getEnrolledStudents().add(otherStudent);
+        Lesson lesson = createLesson(1L, teacher, group, timeslot, false, true);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherCannotTeachEnrolledGroup)
+                .given(lesson, teacher, otherStudent, timeslot)
+                .penalizesBy(0);
+    }
+
+    @Test
+    @DisplayName("Availability roles: STUDENT availability does not satisfy the teacher constraint")
+    void teacherAvailabilityIgnoresStudentRoleSlots() {
+        Teacher dualTeacher = createTeacher(1L, "Dual Role");
+        Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "18:00", "19:00");
+        Lesson lesson = createLesson(1L, dualTeacher, createDanceGroup(1L, "Group"), timeslot, false, true);
+
+        WeeklyAvailability studentSlot = createWeeklyAvailability(1L, dualTeacher.getUser(),
+                DayOfWeek.MONDAY, "17:00", "20:00");
+        studentSlot.setAvailabilityRole(AvailabilityRole.STUDENT);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherOutsideWeeklyAvailability)
+                .given(lesson, dualTeacher, timeslot, studentSlot)
+                .penalizesBy(1);
+
+        WeeklyAvailability teacherSlot = createWeeklyAvailability(2L, dualTeacher.getUser(),
+                DayOfWeek.MONDAY, "17:00", "20:00");
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherOutsideWeeklyAvailability)
+                .given(lesson, dualTeacher, timeslot, teacherSlot)
+                .penalizesBy(0);
+    }
+
     // ==================== HARD CONSTRAINT: Teacher Availability ====================
 
     private static final LocalDate SCHEDULE_ANCHOR = LocalDate.of(2024, 1, 1);
@@ -870,6 +1007,7 @@ class DanceScheduleConstraintProviderTest {
         WeeklyAvailability availability = new WeeklyAvailability();
         availability.setId(id);
         availability.setUser(user);
+        availability.setAvailabilityRole(user instanceof Student ? AvailabilityRole.STUDENT : AvailabilityRole.TEACHER);
         availability.setDayOfWeek(dayOfWeek);
         availability.setStartTime(LocalTime.parse(startTime));
         availability.setEndTime(LocalTime.parse(endTime));
@@ -881,6 +1019,7 @@ class DanceScheduleConstraintProviderTest {
         ResourceUnavailability unavailability = new ResourceUnavailability();
         unavailability.setId(id);
         unavailability.setUser(student);
+        unavailability.setAvailabilityRole(AvailabilityRole.STUDENT);
         int shift = timeslot.getDayOfWeek().getValue() - SCHEDULE_ANCHOR.getDayOfWeek().getValue();
         if (shift < 0) shift += 7;
         unavailability.setDate(SCHEDULE_ANCHOR.plusDays(shift));
