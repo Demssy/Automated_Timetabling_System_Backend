@@ -127,7 +127,9 @@ public class AuthService {
         teacher.setPhone(request.phone());
         teacher.setBio(request.bio());
         teacher.setDanceStyles(styles);
-
+        teacher.setColorCode(request.colorCode() != null && !request.colorCode().isBlank()
+                ? request.colorCode()
+                : "#3498DB");
         Teacher savedTeacher = teacherRepository.save(teacher);
         lessonService.createDefaultPrivateLessonTemplates(savedTeacher, 5);
 
@@ -184,7 +186,7 @@ public class AuthService {
     private Set<DanceStyle> resolveDanceStylesByIdOrName(List<?> identifiers) {
         var styles = new HashSet<DanceStyle>();
         for (Object id : identifiers) {
-            DanceStyle style = null;
+            DanceStyle style;
 
             if (id instanceof Number num) {
                 // ID path: Long, Integer, etc.

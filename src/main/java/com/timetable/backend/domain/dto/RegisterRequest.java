@@ -28,45 +28,31 @@ public record RegisterRequest(
     @Past(message = "Birth date must be in the past")
     LocalDate birthDate,
 
-    /** Role chosen during registration. ADMIN is rejected by the service layer. */
     @NotNull(message = "Role is required")
     UserRole role,
 
     // ── Student-only ──────────────────────────────────────────────────────────
     DanceLevel danceLevel,
 
-    /** Emergency/parent contact; recommended when the student is under 18. */
     String parentContact,
 
-    /** How many private lessons per week the student would like. */
     Integer desiredLessonsPerWeek,
 
     // ── Teacher-only ──────────────────────────────────────────────────────────
-    /** Teacher's contact phone number. */
     String phone,
 
-    /**
-     * Dance styles the teacher is qualified to teach.
-     * Accepts either:
-     * - IDs (Long): [1, 2, 3]
-     * - Names (String): ["SALSA", "BACHATA"]
-     * Must contain at least one element when role == TEACHER.
-     * Type: List of Long/Integer/String (mixed allowed).
-     */
     List<?> qualifiedStyleIds,
 
-    /** Short teacher biography shown on the public profile. */
     String bio,
+
+    String colorCode,
 
     // -- Dual role (TEACHER who also attends lessons as a STUDENT) --
 
-    /** When true and role == TEACHER, the account also gets the STUDENT role and a student profile. */
     boolean alsoStudent,
 
-    /** Dance level of the student profile; falls back to {@code danceLevel} when null. */
     DanceLevel studentLevel,
 
-    /** Dance styles the user wants to learn as a student (optional). */
     Set<Long> studentPreferredStyleIds
 ) {
     /** Convenience constructor for single-role registration. */
@@ -75,6 +61,6 @@ public record RegisterRequest(
             DanceLevel danceLevel, String parentContact, Integer desiredLessonsPerWeek,
             String phone, List<?> qualifiedStyleIds, String bio) {
         this(email, password, fullName, birthDate, role, danceLevel, parentContact, desiredLessonsPerWeek,
-                phone, qualifiedStyleIds, bio, false, null, null);
+                phone, qualifiedStyleIds, bio, null, false, null, null);
     }
 }

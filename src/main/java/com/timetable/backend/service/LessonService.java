@@ -53,7 +53,9 @@ public class LessonService {
             log.warn("No dance styles available; skipping private lesson templates for teacher {}", teacher.getId());
             return;
         }
-
+        Room defaultRoom = roomRepository.findAll().stream()
+                .findFirst()
+                .orElse(null);
         List<Lesson> templates = new java.util.ArrayList<>();
         for (long i = 0; i < needed; i++) {
             Lesson lesson = new Lesson();
@@ -62,7 +64,7 @@ public class LessonService {
             lesson.setDanceGroup(null);
             lesson.setStudent(null);
             lesson.setTimeslot(null);
-            lesson.setRoom(null);
+            lesson.setRoom(defaultRoom);
             lesson.setDurationMinutes(60);
             lesson.setPrivate(true);
             lesson.setActive(true);
