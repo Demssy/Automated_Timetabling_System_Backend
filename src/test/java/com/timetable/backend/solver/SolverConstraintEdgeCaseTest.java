@@ -101,6 +101,121 @@ class SolverConstraintEdgeCaseTest {
                 .penalizesBy(0); // 3 private ≤ 4 — group lessons do NOT consume room capacity
     }
 
+    @Test
+    void partialTimeslotOverlap_twoGroupLessonsInSingleHallPenalized() {
+        Lesson first = groupLesson(1L, teacher(1L, "T1"), danceGroup(1L, "G1"),
+                timeslot(1L, DayOfWeek.MONDAY, "10:00", "11:00"));
+        Lesson second = groupLesson(2L, teacher(2L, "T2"), danceGroup(2L, "G2"),
+                timeslot(2L, DayOfWeek.MONDAY, "10:30", "11:30"));
+        verifier.verifyThat(DanceScheduleConstraintProvider::roomConflict).given(first, second).penalizesBy(1);
+        second.setTimeslot(timeslot(3L, DayOfWeek.MONDAY, "11:00", "12:00"));
+        verifier.verifyThat(DanceScheduleConstraintProvider::roomConflict).given(first, second).penalizesBy(0);
+    }
+
+    @Test
+    void partialTimeslotOverlap_groupBlocksOverlappingPrivate() {
+        Lesson group = groupLesson(1L, teacher(1L, "T1"), danceGroup(1L, "G1"),
+                timeslot(1L, DayOfWeek.MONDAY, "10:00", "11:00"));
+        Lesson individual = privateLesson(2L, teacher(2L, "T2"),
+                timeslot(2L, DayOfWeek.MONDAY, "10:30", "11:30"));
+        verifier.verifyThat(DanceScheduleConstraintProvider::noPrivateDuringGroupLesson)
+                .given(group, individual).penalizesBy(1);
+    }
+
+    @Test
+    void simultaneousLessonsInDifferentRoomsDoNotConflict() {
+        Timeslot slot = timeslot(1L, DayOfWeek.MONDAY, "10:00", "11:00");
+        Lesson first = groupLesson(1L, teacher(1L, "T1"), danceGroup(1L, "G1"), slot);
+        Lesson second = groupLesson(2L, teacher(2L, "T2"), danceGroup(2L, "G2"), slot);
+        Room firstRoom = new Room();
+        firstRoom.setId(1L);
+        Room secondRoom = new Room();
+        secondRoom.setId(2L);
+        first.setRoom(firstRoom);
+        second.setRoom(secondRoom);
+        verifier.verifyThat(DanceScheduleConstraintProvider::roomConflict).given(first, second).penalizesBy(0);
+        second.setPrivate(true);
+        verifier.verifyThat(DanceScheduleConstraintProvider::noPrivateDuringGroupLesson)
+                .given(first, second).penalizesBy(0);
+    }
+
+    @Test
+    void overlappingGroupAndPrivateLessonWithSameStudentIsConflict() {
+        Student student = student(5L, "S1");
+        DanceGroup group = danceGroup(1L, "G1");
+        group.setEnrolledStudents(new HashSet<>(Set.of(student)));
+        Lesson first = groupLesson(1L, teacher(1L, "T1"), group,
+                timeslot(1L, DayOfWeek.MONDAY, "10:00", "11:00"));
+        Lesson second = privateLessonWithStudent(2L, teacher(2L, "T2"),
+                timeslot(2L, DayOfWeek.MONDAY, "10:30", "11:30"), student);
+        verifier.verifyThat(DanceScheduleConstraintProvider::studentConflict).given(first, second).penalizesBy(1);
+        second.setTimeslot(timeslot(3L, DayOfWeek.TUESDAY, "10:30", "11:30"));
+        verifier.verifyThat(DanceScheduleConstraintProvider::studentConflict).given(first, second).penalizesBy(0);
+    }
+
+    @Test
+    void capacityCountsSimultaneousLessonsRatherThanOverlapChain() {
+        Timeslot middle = timeslot(1L, DayOfWeek.MONDAY, "10:00", "12:00");
+        Timeslot early = timeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
+        Timeslot late = timeslot(3L, DayOfWeek.MONDAY, "11:00", "12:00");
+        Lesson anchor = privateLesson(1L, teacher(1L, "T1"), middle);
+        Lesson a = privateLesson(2L, teacher(2L, "T2"), early);
+        Lesson b = privateLesson(3L, teacher(3L, "T3"), early);
+        Lesson c = privateLesson(4L, teacher(4L, "T4"), late);
+        Lesson d = privateLesson(5L, teacher(5L, "T5"), late);
+        verifier.verifyThat(DanceScheduleConstraintProvider::maxFourPrivateLessonsPerTimeslot)
+                .given(anchor, a, b, c, d).penalizesBy(0);
+        Lesson e = privateLesson(6L, teacher(6L, "T6"), late);
+        Lesson f = privateLesson(7L, teacher(7L, "T7"), late);
+        verifier.verifyThat(DanceScheduleConstraintProvider::maxFourPrivateLessonsPerTimeslot)
+                .given(anchor, a, b, c, d, e, f).penalizesBy(1);
+    }
+
+    @Test
+    void capacityCountsIdenticalIntervalsWithDifferentTimeslotIds() {
+        Lesson[] lessons = new Lesson[5];
+        for (int i = 0; i < lessons.length; i++) {
+            long id = i + 1L;
+            lessons[i] = privateLesson(id, teacher(id, "T" + id),
+                    timeslot(id, DayOfWeek.MONDAY, "10:00", "11:00"));
+        }
+        verifier.verifyThat(DanceScheduleConstraintProvider::maxFourPrivateLessonsPerTimeslot)
+                .given((Object[]) lessons).penalizesBy(1);
+        lessons[4].setTimeslot(timeslot(5L, DayOfWeek.MONDAY, "11:00", "12:00"));
+        verifier.verifyThat(DanceScheduleConstraintProvider::maxFourPrivateLessonsPerTimeslot)
+                .given((Object[]) lessons).penalizesBy(0);
+    }
+
+    @Test
+    void capacityPenalizesSeparateOverloadedPeriods() {
+        Lesson[] lessons = new Lesson[10];
+        for (int i = 0; i < lessons.length; i++) {
+            long id = i + 1L;
+            Timeslot slot = i < 5
+                    ? timeslot(id, DayOfWeek.MONDAY, "10:00", "11:00")
+                    : timeslot(id, DayOfWeek.MONDAY, "11:00", "12:00");
+            lessons[i] = privateLesson(id, teacher(id, "T" + id), slot);
+        }
+        verifier.verifyThat(DanceScheduleConstraintProvider::maxFourPrivateLessonsPerTimeslot)
+                .given((Object[]) lessons).penalizesBy(2);
+    }
+
+    @Test
+    void partialAvailabilityOverlap_teacherAndStudentPenalized() {
+        Teacher teacher = teacher(1L, "T1");
+        Student student = student(2L, "S1");
+        Timeslot slot = timeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00");
+        Lesson lesson = privateLessonWithStudent(1L, teacher, slot, student);
+        WeeklyAvailability teacherWindow = weeklyAvailability(1L, teacher.getUser(),
+                DayOfWeek.MONDAY, "16:30", "18:00");
+        WeeklyAvailability studentWindow = weeklyAvailability(2L, student,
+                DayOfWeek.MONDAY, "16:30", "18:00");
+        verifier.verifyThat(DanceScheduleConstraintProvider::teacherOutsideWeeklyAvailability)
+                .given(lesson, teacherWindow).penalizesBy(1);
+        verifier.verifyThat(DanceScheduleConstraintProvider::studentOutsideWeeklyAvailability)
+                .given(lesson, studentWindow).penalizesBy(1);
+    }
+
     // ================================================================
     //  TEACHER DAILY WORKLOAD — max 6 lessons per day
     // ================================================================
@@ -598,8 +713,4 @@ class SolverConstraintEdgeCaseTest {
         return wa;
     }
 }
-
-
-
-
 

@@ -2,9 +2,13 @@ package com.timetable.backend.service;
 
 import com.timetable.backend.domain.dto.CancelLessonRequest;
 import com.timetable.backend.domain.dto.ScheduledLessonDTO;
+import com.timetable.backend.domain.exception.ScheduleConflictException;
 import com.timetable.backend.domain.mapper.LessonMapper;
 import com.timetable.backend.domain.model.AbstractUser;
 import com.timetable.backend.domain.model.ScheduledLesson;
+import com.timetable.backend.domain.model.ScheduleMetadata;
+import com.timetable.backend.domain.model.ScheduleStatus;
+import com.timetable.backend.domain.repository.ScheduleMetadataRepository;
 import com.timetable.backend.domain.repository.ScheduledLessonRepository;
 import com.timetable.backend.domain.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +36,8 @@ public class ScheduledLessonCancellationService {
     private final ScheduledLessonRepository scheduledLessonRepository;
     private final UserRepository userRepository;
     private final LessonMapper lessonMapper;
+    private final ScheduleScoreEvaluationService scoreEvaluationService;
+    private final ScheduleMetadataRepository scheduleRepository;
 
     /**
      * Marks a scheduled lesson as cancelled.
@@ -52,7 +58,9 @@ public class ScheduledLessonCancellationService {
     public ScheduledLessonDTO cancelLesson(Long scheduledLessonId,
                                            CancelLessonRequest request,
                                            Authentication authentication) {
+        ScheduleMetadata schedule = lockBySnapshotId(scheduledLessonId);
         ScheduledLesson scheduledLesson = findOrThrow(scheduledLessonId);
+        requireEditable(scheduledLesson);
 
         if (scheduledLesson.isCancelled()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -70,11 +78,14 @@ public class ScheduledLessonCancellationService {
         scheduledLesson.setCancelledBy(caller);
         scheduledLesson.setCancelledAt(LocalDateTime.now());
         scheduledLesson.setCancelReason(request != null ? request.reason() : null);
+        invalidateSolver(schedule);
 
         log.info("Lesson (scheduledId={}) cancelled by user {} at {}",
                 scheduledLessonId, caller.getId(), scheduledLesson.getCancelledAt());
 
-        return lessonMapper.toScheduledLessonDTO(scheduledLessonRepository.save(scheduledLesson));
+        ScheduledLesson saved = scheduledLessonRepository.save(scheduledLesson);
+        scoreEvaluationService.recalculate(saved.getSchedule().getId());
+        return lessonMapper.toScheduledLessonDTO(saved);
     }
 
     /**
@@ -87,7 +98,9 @@ public class ScheduledLessonCancellationService {
      */
     @Transactional
     public ScheduledLessonDTO restoreLesson(Long scheduledLessonId, Authentication authentication) {
+        ScheduleMetadata schedule = lockBySnapshotId(scheduledLessonId);
         ScheduledLesson scheduledLesson = findOrThrow(scheduledLessonId);
+        requireEditable(scheduledLesson);
 
         if (!scheduledLesson.isCancelled()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -100,10 +113,33 @@ public class ScheduledLessonCancellationService {
         scheduledLesson.setCancelledBy(null);
         scheduledLesson.setCancelledAt(null);
         scheduledLesson.setCancelReason(null);
+        invalidateSolver(schedule);
 
         log.info("Lesson (scheduledId={}) restored by admin user {}", scheduledLessonId, caller.getId());
 
-        return lessonMapper.toScheduledLessonDTO(scheduledLessonRepository.save(scheduledLesson));
+        ScheduledLesson saved = scheduledLessonRepository.save(scheduledLesson);
+        if (saved.getSchedule().getStatus() == ScheduleStatus.PUBLISHED) {
+            scoreEvaluationService.validateAndRecalculate(saved.getSchedule().getId(), false);
+        } else {
+            scoreEvaluationService.recalculate(saved.getSchedule().getId());
+        }
+        return lessonMapper.toScheduledLessonDTO(saved);
+    }
+
+    private void requireEditable(ScheduledLesson lesson) {
+        if (lesson.getSchedule().getStatus() == ScheduleStatus.ARCHIVED) {
+            throw new ScheduleConflictException("Cannot modify an archived schedule");
+        }
+    }
+
+    private ScheduleMetadata lockBySnapshotId(Long snapshotId) {
+        return scheduleRepository.findBySnapshotIdForUpdate(snapshotId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Scheduled lesson not found: " + snapshotId));
+    }
+
+    private void invalidateSolver(ScheduleMetadata schedule) {
+        schedule.setSolverRevision(Math.incrementExact(schedule.getSolverRevision()));
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -146,4 +182,3 @@ public class ScheduledLessonCancellationService {
                 .anyMatch(a -> a.getAuthority().equals(role));
     }
 }
-

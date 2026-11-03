@@ -202,6 +202,23 @@ class DanceScheduleConstraintProviderTest {
     }
 
     @Test
+    void partialOverlapConflictsForTeachersAndDualRoleUsers() {
+        Teacher teacher = createTeacher(1L, "Dual Role");
+        Teacher other = createTeacher(2L, "Other");
+        Student student = createStudentProfileOf(teacher);
+        Timeslot firstSlot = createTimeslot(1L, DayOfWeek.MONDAY, "10:00", "11:00");
+        Timeslot secondSlot = createTimeslot(2L, DayOfWeek.MONDAY, "10:30", "11:30");
+        Lesson first = createLesson(1L, teacher, createDanceGroup(1L, "First"), firstSlot, false, true);
+        Lesson second = createLesson(2L, teacher, null, secondSlot, true, false);
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherConflict)
+                .given(first, second).penalizesBy(1);
+        second.setTeacher(other);
+        second.setStudent(student);
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherStudentTimeslotConflict)
+                .given(first, second).penalizesBy(1);
+    }
+
+    @Test
     @DisplayName("Teacher conflict: No penalty for different timeslots")
     void noPenaltyForTeacherConflict_differentTimeslots() {
         Teacher teacher = createTeacher(1L, "John Doe");

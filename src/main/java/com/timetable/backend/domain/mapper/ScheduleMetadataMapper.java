@@ -23,6 +23,7 @@ public interface ScheduleMetadataMapper {
     @Mapping(target = "id",          ignore = true)
     @Mapping(target = "createdAt",   ignore = true)
     @Mapping(target = "solverScore", ignore = true)
+    @Mapping(target = "solverRevision", ignore = true)
     @Mapping(target = "description", ignore = true)
     ScheduleMetadata toEntity(ScheduleMetadataDTO dto);
 
@@ -32,4 +33,3 @@ public interface ScheduleMetadataMapper {
                 : dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 }
-

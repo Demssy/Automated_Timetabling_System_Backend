@@ -2,14 +2,28 @@ package com.timetable.backend.domain.repository;
 
 import com.timetable.backend.domain.model.ScheduleMetadata;
 import com.timetable.backend.domain.model.ScheduleStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ScheduleMetadataRepository extends JpaRepository<ScheduleMetadata, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from ScheduleMetadata s where s.id = :id")
+    Optional<ScheduleMetadata> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from ScheduleMetadata s where s.id = "
+            + "(select sl.schedule.id from ScheduledLesson sl where sl.id = :snapshotId)")
+    Optional<ScheduleMetadata> findBySnapshotIdForUpdate(@Param("snapshotId") Long snapshotId);
 
     /**
      * Returns all schedules that match the given status.
@@ -35,4 +49,3 @@ public interface ScheduleMetadataRepository extends JpaRepository<ScheduleMetada
             LocalDate newValidFrom
     );
 }
-

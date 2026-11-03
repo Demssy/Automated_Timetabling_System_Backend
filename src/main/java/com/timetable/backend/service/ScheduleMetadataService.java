@@ -1,6 +1,7 @@
 package com.timetable.backend.service;
 
 import com.timetable.backend.domain.dto.ScheduleMetadataDTO;
+import com.timetable.backend.domain.exception.ScheduleConflictException;
 import com.timetable.backend.domain.mapper.ScheduleMetadataMapper;
 import com.timetable.backend.domain.model.AddedLesson;
 import com.timetable.backend.domain.model.ScheduleMetadata;
@@ -9,6 +10,7 @@ import com.timetable.backend.domain.model.ScheduledLessonStatus;
 import com.timetable.backend.domain.model.ScheduleStatus;
 import com.timetable.backend.domain.repository.AddedLessonRepository;
 import com.timetable.backend.domain.repository.ScheduleMetadataRepository;
+import com.timetable.backend.domain.repository.SchedulePublicationLockRepository;
 import com.timetable.backend.domain.repository.ScheduledLessonRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,8 @@ public class ScheduleMetadataService {
     private final ScheduleMetadataMapper mapper;
     private final AddedLessonRepository addedLessonRepository;
     private final ScheduledLessonRepository scheduledLessonRepository;
+    private final ScheduleScoreEvaluationService scoreEvaluationService;
+    private final SchedulePublicationLockRepository publicationLockRepository;
 
     /**
      * Returns only PUBLISHED schedules.
@@ -88,9 +92,12 @@ public class ScheduleMetadataService {
      */
     @Transactional
     public ScheduleMetadataDTO save(Long id) {
-        ScheduleMetadata schedule = repository.findById(id)
+        ScheduleMetadata schedule = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
+        requireEditable(schedule);
+        invalidateSolver(schedule);
         synchronizeAddedLessonsSnapshot(schedule);
+        recalculateAfterSynchronization(schedule);
         return mapper.toDTO(schedule);
     }
 
@@ -99,9 +106,12 @@ public class ScheduleMetadataService {
      */
     @Transactional
     public ScheduleMetadataDTO republish(Long id) {
-        ScheduleMetadata schedule = repository.findById(id)
+        ScheduleMetadata schedule = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
+        requireEditable(schedule);
+        invalidateSolver(schedule);
         synchronizeAddedLessonsSnapshot(schedule);
+        recalculateAfterSynchronization(schedule);
         return mapper.toDTO(schedule);
     }
 
@@ -109,24 +119,33 @@ public class ScheduleMetadataService {
     public ScheduleMetadataDTO create(ScheduleMetadataDTO dto) {
         ScheduleMetadata entity = mapper.toEntity(dto);
         entity.setCreatedAt(java.time.LocalDateTime.now()); // Ensure timestamp is set
-        if (entity.getStatus() == null) {
+        boolean publishing = entity.getStatus() == ScheduleStatus.PUBLISHED;
+        if (entity.getStatus() == null || publishing) {
             entity.setStatus(ScheduleStatus.DRAFT);
         }
-        return mapper.toDTO(repository.save(entity));
+        entity = repository.save(entity);
+        if (publishing) {
+            preparePublication(entity);
+            entity.setStatus(ScheduleStatus.PUBLISHED);
+        }
+        return mapper.toDTO(entity);
     }
 
     @Transactional
     public ScheduleMetadataDTO update(Long id, ScheduleMetadataDTO dto) {
-        ScheduleMetadata entity = repository.findById(id)
+        ScheduleMetadata entity = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
 
         entity.setName(dto.name());
         entity.setValidFrom(dto.validFrom());
         entity.setValidTo(dto.validTo());
 
-        if (dto.status() != null) {
-            entity.setStatus(dto.status());
+        ScheduleStatus targetStatus = dto.status() == null ? entity.getStatus() : dto.status();
+        if (targetStatus == ScheduleStatus.PUBLISHED) {
+            preparePublication(entity);
         }
+        invalidateSolver(entity);
+        entity.setStatus(targetStatus);
 
         return mapper.toDTO(repository.save(entity));
     }
@@ -145,28 +164,42 @@ public class ScheduleMetadataService {
      */
     @Transactional
     public ScheduleMetadataDTO publish(Long id) {
-        ScheduleMetadata entity = repository.findById(id)
+        ScheduleMetadata entity = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
 
+        if (entity.getStatus() != ScheduleStatus.DRAFT) {
+            throw new ScheduleConflictException("Only a draft schedule can be published");
+        }
+        preparePublication(entity);
+        invalidateSolver(entity);
+        log.info("Publishing schedule id={}, previous status={}", id, entity.getStatus());
+        entity.setStatus(ScheduleStatus.PUBLISHED);
+
+        return mapper.toDTO(repository.save(entity));
+    }
+
+    private void preparePublication(ScheduleMetadata entity) {
+        if (entity.getStatus() == ScheduleStatus.ARCHIVED) {
+            throw new ScheduleConflictException("Cannot publish an archived schedule");
+        }
+        publicationLockRepository.acquire()
+                .orElseThrow(() -> new IllegalStateException("Schedule publication lock is missing"));
+        scoreEvaluationService.validateAndRecalculate(entity.getId(), true);
         boolean overlap = repository.existsByStatusAndIdNotAndValidFromLessThanEqualAndValidToGreaterThanEqual(
                 ScheduleStatus.PUBLISHED,
-                id,
+                entity.getId(),
                 entity.getValidTo(),
                 entity.getValidFrom()
         );
 
         if (overlap) {
-            throw new IllegalStateException(
-                    "Cannot publish schedule id=" + id +
+            throw new ScheduleConflictException(
+                    "Cannot publish schedule id=" + entity.getId() +
                     ": another PUBLISHED schedule already covers the same date range (" +
                     entity.getValidFrom() + " — " + entity.getValidTo() + ")"
             );
         }
 
-        log.info("Publishing schedule id={}, previous status={}", id, entity.getStatus());
-        entity.setStatus(ScheduleStatus.PUBLISHED);
-
-        return mapper.toDTO(repository.save(entity));
     }
 
     /**
@@ -178,9 +211,10 @@ public class ScheduleMetadataService {
      */
     @Transactional
     public ScheduleMetadataDTO archive(Long id) {
-        ScheduleMetadata entity = repository.findById(id)
+        ScheduleMetadata entity = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
         log.info("Archiving schedule id={}, previous status={}", id, entity.getStatus());
+        invalidateSolver(entity);
         entity.setStatus(ScheduleStatus.ARCHIVED);
         return mapper.toDTO(repository.save(entity));
     }
@@ -194,19 +228,37 @@ public class ScheduleMetadataService {
      */
     @Transactional
     public ScheduleMetadataDTO revertToDraft(Long id) {
-        ScheduleMetadata entity = repository.findById(id)
+        ScheduleMetadata entity = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
         log.info("Reverting schedule id={} to DRAFT, previous status={}", id, entity.getStatus());
+        invalidateSolver(entity);
         entity.setStatus(ScheduleStatus.DRAFT);
         return mapper.toDTO(repository.save(entity));
     }
 
     @Transactional
     public void delete(Long id) {
-        if (!repository.existsById(id)) {
-            throw new IllegalArgumentException("Schedule not found with id: " + id);
+        ScheduleMetadata schedule = repository.findByIdForUpdate(id)
+                .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
+        repository.delete(schedule);
+    }
+
+    private void requireEditable(ScheduleMetadata schedule) {
+        if (schedule.getStatus() == ScheduleStatus.ARCHIVED) {
+            throw new ScheduleConflictException("Cannot modify an archived schedule");
         }
-        repository.deleteById(id);
+    }
+
+    private void invalidateSolver(ScheduleMetadata schedule) {
+        schedule.setSolverRevision(Math.incrementExact(schedule.getSolverRevision()));
+    }
+
+    private void recalculateAfterSynchronization(ScheduleMetadata schedule) {
+        if (schedule.getStatus() == ScheduleStatus.PUBLISHED) {
+            scoreEvaluationService.validateAndRecalculate(schedule.getId(), false);
+        } else {
+            scoreEvaluationService.recalculate(schedule.getId());
+        }
     }
 
     private void synchronizeAddedLessonsSnapshot(ScheduleMetadata schedule) {

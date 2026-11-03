@@ -10,12 +10,17 @@ import com.timetable.backend.config.SolverWeightsConfig;
 import com.timetable.backend.domain.model.AvailabilityRole;
 import com.timetable.backend.domain.model.Lesson;
 import com.timetable.backend.domain.model.ResourceUnavailability;
+import com.timetable.backend.domain.model.Room;
 import com.timetable.backend.domain.model.Student;
+import com.timetable.backend.domain.model.Timeslot;
 import com.timetable.backend.domain.model.WeeklyAvailability;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * Constraint provider for dance schedule optimization.
@@ -29,8 +34,8 @@ import java.time.LocalTime;
  * Each constraint already has its own null-safety filters.</p>
  *
  * <p><b>Room logic:</b> There is only one room. Room is NOT a planning variable.
- * The solver enforces: max 4 private lessons per timeslot, and no private lessons
- * during a group lesson timeslot.</p>
+ * The solver enforces a maximum of four simultaneous private lessons and
+ * prevents other lessons from using a room occupied by a group.</p>
  *
  * Hard Constraints (must be satisfied):
  * - Max 4 private lessons per timeslot (single room capacity)
@@ -89,6 +94,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 // Hard constraints — single-room capacity
                 maxFourPrivateLessonsPerTimeslot(constraintFactory),
                 noPrivateDuringGroupLesson(constraintFactory),
+                roomConflict(constraintFactory),
 
                 // Hard constraints — teacher
                 teacherConflict(constraintFactory),
@@ -126,28 +132,61 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     /**
      * HARD CONSTRAINT: Max 4 Private Lessons Per Timeslot
      *
-     * Since there is only one room, at most 4 private lessons can happen simultaneously.
-     * Group by timeslot → count private lessons → penalize when count exceeds 4.
+     * Penalizes each lesson starting when four others are already in the room.
      *
      * @param constraintFactory the factory to create constraints
      * @return max private lessons per timeslot constraint
      */
     Constraint maxFourPrivateLessonsPerTimeslot(ConstraintFactory constraintFactory) {
+        record RoomDay(Room room, DayOfWeek day) {}
+
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.isPrivate() && lesson.getTimeslot() != null)
-                .groupBy(Lesson::getTimeslot, ConstraintCollectors.count())
-                .filter((timeslot, count) -> count > 4)
+                .groupBy(lesson -> new RoomDay(lesson.getRoom(), lesson.getTimeslot().getDayOfWeek()),
+                        ConstraintCollectors.toList())
+                .filter((roomDay, lessons) -> excessPrivateStarts(lessons) > 0)
                 .penalize(HardSoftScore.ONE_HARD,
-                         (timeslot, count) -> count - 4)
+                         (roomDay, lessons) -> excessPrivateStarts(lessons))
                 .asConstraint("Max 4 private lessons per timeslot");
+    }
+
+    private static int excessPrivateStarts(List<Lesson> lessons) {
+        List<Lesson> ordered = lessons.stream()
+                .sorted(Comparator.comparing((Lesson lesson) -> lesson.getTimeslot().getStartTime())
+                        .thenComparing(Lesson::getId))
+                .toList();
+        int excess = 0;
+        for (int i = 0; i < ordered.size(); i++) {
+            LocalTime start = ordered.get(i).getTimeslot().getStartTime();
+            int active = 0;
+            for (int j = 0; j < i; j++) {
+                if (ordered.get(j).getTimeslot().getEndTime().isAfter(start)) {
+                    active++;
+                }
+            }
+            if (active >= 4) {
+                excess++;
+            }
+        }
+        return excess;
+    }
+
+    private static boolean overlaps(Timeslot first, Timeslot second) {
+        return first != null && second != null
+                && first.getDayOfWeek() == second.getDayOfWeek()
+                && first.getStartTime().isBefore(second.getEndTime())
+                && second.getStartTime().isBefore(first.getEndTime());
+    }
+
+    private static boolean sameRoom(Lesson first, Lesson second) {
+        return Objects.equals(first.getRoom(), second.getRoom());
     }
 
     /**
      * HARD CONSTRAINT: No Private Lessons During Group Lesson
      *
-     * A group lesson occupies the entire room. No private lesson may be scheduled
-     * in the same timeslot as any group lesson.
+     * A group lesson occupies the entire room, including partially overlapping slots.
      *
      * @param constraintFactory the factory to create constraints
      * @return no private during group constraint
@@ -157,12 +196,24 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.isPrivate() && lesson.getTimeslot() != null)
                 .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
-                        Joiners.equal(Lesson::getTimeslot),
                         Joiners.filtering((privateLsn, groupLsn) ->
-                                !groupLsn.isPrivate() && groupLsn.getTimeslot() != null)
+                                !groupLsn.isPrivate() && sameRoom(privateLsn, groupLsn)
+                                        && overlaps(privateLsn.getTimeslot(), groupLsn.getTimeslot()))
                 )
                 .penalize(HardSoftScore.ONE_HARD)
                 .asConstraint("No private lessons during group lesson");
+    }
+
+    Constraint roomConflict(ConstraintFactory constraintFactory) {
+        return constraintFactory.forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> !lesson.isPrivate() && lesson.getTimeslot() != null)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
+                                .filter(lesson -> !lesson.isPrivate() && lesson.getTimeslot() != null),
+                        Joiners.lessThan(Lesson::getId),
+                        Joiners.filtering((first, second) -> sameRoom(first, second)
+                                && overlaps(first.getTimeslot(), second.getTimeslot())))
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("Room conflict");
     }
 
     /**
@@ -171,9 +222,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      * A teacher cannot teach two lessons at the same time.
      *
      * <p><b>Null-safety:</b> Both streams explicitly filter {@code timeslot != null}.
-     * Without this, two unassigned private lessons from the same teacher (both timeslot=null)
-     * would match via {@code Joiners.equal(Lesson::getTimeslot)} because {@code null == null},
-     * producing a <em>spurious hard violation</em> that severely misleads the solver.</p>
+     * Unassigned lessons must not be treated as overlapping.</p>
      *
      * @param constraintFactory the factory to create constraints
      * @return teacher conflict constraint
@@ -188,8 +237,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                         Joiners.lessThan(Lesson::getId),
                         // Same teacher
                         Joiners.equal(Lesson::getTeacher),
-                        // Same timeslot
-                        Joiners.equal(Lesson::getTimeslot)
+                        Joiners.filtering((first, second) -> overlaps(first.getTimeslot(), second.getTimeslot()))
                 )
                 .penalize(HardSoftScore.ONE_HARD)
                 .asConstraint("Teacher conflict");
@@ -207,8 +255,9 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .filter(lesson -> lesson.getTimeslot() != null)
                 .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
                                 .filter(lesson -> lesson.getTimeslot() != null),
-                        Joiners.equal(Lesson::getTimeslot),
                         Joiners.filtering((teaching, attended) -> teaching != attended
+                                && overlaps(teaching.getTimeslot(), attended.getTimeslot())
+                                && teaching.getTeacher() != null
                                 && attendsAsStudent(attended, teaching.getTeacher().getId()))
                 )
                 .penalize(HardSoftScore.ONE_HARD)
@@ -355,19 +404,29 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
 
     /**
      * HARD CONSTRAINT: Student Conflict (Double Booking)
-     * A student cannot attend two lessons at the same time.
+     * A student cannot attend overlapping lessons, including group enrollment.
      */
     Constraint studentConflict(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getStudent() != null && lesson.getTimeslot() != null)
-                .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
+                .filter(lesson -> lesson.getTimeslot() != null)
+                .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
+                                .filter(lesson -> lesson.getTimeslot() != null),
                         Joiners.lessThan(Lesson::getId),
-                        Joiners.equal(Lesson::getStudent),
-                        Joiners.equal(Lesson::getTimeslot)
+                        Joiners.filtering((first, second) -> overlaps(first.getTimeslot(), second.getTimeslot())
+                                && sharesStudent(first, second))
                 )
                 .penalize(HardSoftScore.ONE_HARD)
                 .asConstraint("Student conflict (double booking)");
+    }
+
+    private static boolean sharesStudent(Lesson first, Lesson second) {
+        if (first.getStudent() != null && attendsAsStudent(second, first.getStudent().getId())) {
+            return true;
+        }
+        return first.getDanceGroup() != null && first.getDanceGroup().getEnrolledStudents() != null
+                && first.getDanceGroup().getEnrolledStudents().stream()
+                .anyMatch(student -> attendsAsStudent(second, student.getId()));
     }
 
     /**

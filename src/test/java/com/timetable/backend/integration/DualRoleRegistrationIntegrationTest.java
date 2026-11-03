@@ -58,7 +58,7 @@ class DualRoleRegistrationIntegrationTest {
         var request = new RegisterRequest(
                 "dual.integration@example.com", "password123", "Dual Role", LocalDate.of(1991, 4, 12),
                 UserRole.TEACHER, null, null, 2, "+1-555-0100", List.of(salsa.getId()), "Bio",
-                true, DanceLevel.INTERMEDIATE, Set.of(salsa.getId()));
+                null, true, DanceLevel.INTERMEDIATE, Set.of(salsa.getId()));
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)

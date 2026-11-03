@@ -3,15 +3,11 @@ package com.timetable.backend.service;
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.solver.SolverManager;
 import ai.timefold.solver.core.api.solver.SolverStatus;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.timetable.backend.domain.dto.ConstraintViolationSummary;
 import com.timetable.backend.domain.dto.ScoreExplanationResponse;
 import com.timetable.backend.domain.dto.UnmetStudentDTO;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
 import com.timetable.backend.solver.DanceSchedule;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,11 +30,12 @@ public class SolverService {
 
     private final SolverManager<DanceSchedule, Long> solverManager;
     private final SolverProblemLoaderService problemLoaderService;
+    private final SolverRunService solverRunService;
 
     private final ScheduledLessonRepository scheduledLessonRepository;
     private final ScheduleMetadataRepository scheduleMetadataRepository;
     private final SolutionPersistenceService persistenceService;
-    private final ObjectMapper objectMapper;
+    private final ScheduleScoreEvaluationService scoreEvaluationService;
     private final WeeklyAvailabilityRepository weeklyAvailabilityRepository;
     private final TeacherRepository teacherRepository;
 
@@ -49,11 +46,12 @@ public class SolverService {
      */
     public void solve(Long scheduleId) {
         log.info("Starting solver for schedule ID: {}", scheduleId);
+        long revision = solverRunService.begin(scheduleId);
 
         solverManager.solveBuilder()
                 .withProblemId(scheduleId)
                 .withProblemFinder(problemLoaderService::loadProblem)
-                .withBestSolutionConsumer(persistenceService::saveSolution)
+                .withBestSolutionConsumer(solution -> persistenceService.saveSolution(solution, revision))
                 .run();
     }
 
@@ -148,39 +146,14 @@ public class SolverService {
     }
 
     /**
-     * Returns the per-constraint score explanation for a solved schedule.
-     * The explanation was computed by {@link SolutionPersistenceService} using
-     * {@code SolutionManager.explain()} and stored as JSON in {@code schedule_metadata}.
+     * Evaluates the current snapshots and shared problem facts without persisting the result.
      *
      * @param scheduleId the schedule identifier
      * @return {@link ScoreExplanationResponse} with total score and per-constraint breakdown
-     * @throws EntityNotFoundException if no schedule with the given ID exists
      */
     @Transactional(readOnly = true)
     public ScoreExplanationResponse getScoreExplanation(Long scheduleId) {
-        ScheduleMetadata meta = scheduleMetadataRepository.findById(scheduleId)
-            .orElseThrow(() -> new EntityNotFoundException("Schedule not found: " + scheduleId));
-
-        List<ConstraintViolationSummary> violations = parseViolations(meta.getScoreExplanation());
-
-        return new ScoreExplanationResponse(scheduleId, meta.getSolverScore(), violations);
-    }
-
-    /**
-     * Deserializes the stored JSON explanation back into a list of summaries.
-     * Returns an empty list if the column is null, blank, or malformed.
-     */
-    private List<ConstraintViolationSummary> parseViolations(String json) {
-        if (json == null || json.isBlank()) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(json,
-                new TypeReference<List<ConstraintViolationSummary>>() {});
-        } catch (Exception e) {
-            log.warn("Cannot parse stored score explanation: {}", e.getMessage());
-            return List.of();
-        }
+        return scoreEvaluationService.explain(scheduleId);
     }
 
     /**

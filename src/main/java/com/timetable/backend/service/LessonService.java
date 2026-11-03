@@ -3,6 +3,7 @@ package com.timetable.backend.service;
 import com.timetable.backend.domain.dto.CreateLessonRequest;
 import com.timetable.backend.domain.dto.ScheduledLessonDTO;
 import com.timetable.backend.domain.dto.UpdateLessonRequest;
+import com.timetable.backend.domain.exception.ScheduleConflictException;
 import com.timetable.backend.domain.mapper.LessonMapper;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
@@ -37,6 +38,7 @@ public class LessonService {
     private final ScheduledLessonRepository scheduledLessonRepository;
     private final UserRepository userRepository;
     private final DanceStyleRepository danceStyleRepository;
+    private final ScheduleScoreEvaluationService scoreEvaluationService;
 
     /** Creates missing private lesson templates so the teacher has {@code targetCount} of them. */
     @Transactional
@@ -193,8 +195,10 @@ public class LessonService {
 
     @Transactional
     public void deleteScheduledLesson(Long id) {
+        ScheduleMetadata schedule = lockBySnapshotId(id);
         ScheduledLesson scheduledLesson = scheduledLessonRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Scheduled lesson not found with id: " + id));
+        requireEditable(schedule);
 
         if (scheduledLesson.getAddedLesson() != null) {
             AddedLesson addedLesson = scheduledLesson.getAddedLesson();
@@ -203,34 +207,38 @@ public class LessonService {
         } else {
             scheduledLessonRepository.delete(scheduledLesson);
         }
+        invalidateSolver(schedule);
+        scoreEvaluationService.recalculate(schedule.getId());
     }
 
 
     @Transactional
     public void deleteLesson(Long id) {
-        // 1. Проверяем, пришел ли нам ID из сетки (ScheduledLesson)
-        ScheduledLesson scheduledLesson = scheduledLessonRepository.findById(id).orElse(null);
+        ScheduleMetadata snapshotSchedule = scheduleMetadataRepository.findBySnapshotIdForUpdate(id).orElse(null);
+        ScheduledLesson scheduledLesson = snapshotSchedule == null
+                ? null : scheduledLessonRepository.findById(id).orElse(null);
 
         if (scheduledLesson != null) {
-            // Если это вручную добавленный урок (AddedLesson), удаляем его полностью
+            requireEditable(snapshotSchedule);
             if (scheduledLesson.getAddedLesson() != null) {
-                AddedLesson addedLesson = scheduledLesson.getAddedLesson();
-                scheduledLessonRepository.delete(scheduledLesson);
-                addedLessonRepository.deleteById(addedLesson.getId());
+                deleteScheduledLesson(id);
                 return;
             }
-            // Если это сгенерированный урок, извлекаем правильный ID оригинального базового урока
             if (scheduledLesson.getLesson() != null) {
                 id = scheduledLesson.getLesson().getId();
             }
         }
 
-        // 2. Теперь переменная id гарантированно содержит правильный идентификатор сущности Lesson
         if (!lessonRepository.existsById(id)) {
             throw new IllegalArgumentException("Lesson not found with id: " + id);
         }
 
         lessonRepository.deleteById(id);
+        if (snapshotSchedule != null) {
+            lessonRepository.flush();
+            invalidateSolver(snapshotSchedule);
+            scoreEvaluationService.recalculate(snapshotSchedule.getId());
+        }
     }
 
     @Transactional
@@ -265,8 +273,10 @@ public class LessonService {
      */
     @Transactional
     public ScheduledLessonDTO updateLessonManually(Long id, UpdateLessonRequest request) {
+        ScheduleMetadata schedule = lockBySnapshotId(id);
         ScheduledLesson scheduledLesson = scheduledLessonRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lesson not found with id: " + id));
+        requireEditable(schedule);
         Lesson lesson = scheduledLesson.getLesson();
         AddedLesson addedLesson = scheduledLesson.getAddedLesson();
         if (lesson == null && addedLesson == null) {
@@ -309,7 +319,12 @@ public class LessonService {
             addedLessonRepository.save(addedLesson);
         }
 
-        return lessonMapper.toScheduledLessonDTO(scheduledLessonRepository.save(scheduledLesson));
+        scheduledLesson.setStatus(scheduledLesson.getTimeslot() == null
+                ? ScheduledLessonStatus.UNASSIGNED : ScheduledLessonStatus.ASSIGNED);
+        ScheduledLesson saved = scheduledLessonRepository.save(scheduledLesson);
+        invalidateSolver(schedule);
+        recalculateAfterEdit(schedule);
+        return lessonMapper.toScheduledLessonDTO(saved);
     }
 
     // -------------------------------------------------------------------------
@@ -461,8 +476,9 @@ public class LessonService {
     }
 
     private ScheduledLessonDTO createOneTimeLesson(CreateLessonRequest request) {
-        ScheduleMetadata schedule = scheduleMetadataRepository.findById(request.scheduleId())
+        ScheduleMetadata schedule = scheduleMetadataRepository.findByIdForUpdate(request.scheduleId())
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + request.scheduleId()));
+        requireEditable(schedule);
         Teacher teacher = teacherRepository.findById(request.teacherId())
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found with id: " + request.teacherId()));
 
@@ -504,7 +520,33 @@ public class LessonService {
         snapshot.setCancelledAt(null);
         snapshot.setCancelReason(null);
 
-        return lessonMapper.toScheduledLessonDTO(scheduledLessonRepository.save(snapshot));
+        ScheduledLesson saved = scheduledLessonRepository.save(snapshot);
+        invalidateSolver(schedule);
+        recalculateAfterEdit(schedule);
+        return lessonMapper.toScheduledLessonDTO(saved);
+    }
+
+    private void requireEditable(ScheduleMetadata schedule) {
+        if (schedule.getStatus() == ScheduleStatus.ARCHIVED) {
+            throw new ScheduleConflictException("Cannot modify an archived schedule");
+        }
+    }
+
+    private ScheduleMetadata lockBySnapshotId(Long snapshotId) {
+        return scheduleMetadataRepository.findBySnapshotIdForUpdate(snapshotId)
+                .orElseThrow(() -> new IllegalArgumentException("Scheduled lesson not found with id: " + snapshotId));
+    }
+
+    private void invalidateSolver(ScheduleMetadata schedule) {
+        schedule.setSolverRevision(Math.incrementExact(schedule.getSolverRevision()));
+    }
+
+    private void recalculateAfterEdit(ScheduleMetadata schedule) {
+        if (schedule.getStatus() == ScheduleStatus.PUBLISHED) {
+            scoreEvaluationService.validateAndRecalculate(schedule.getId(), false);
+        } else {
+            scoreEvaluationService.recalculate(schedule.getId());
+        }
     }
 
     /**

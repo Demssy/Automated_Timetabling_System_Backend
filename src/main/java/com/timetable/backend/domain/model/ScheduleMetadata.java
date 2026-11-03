@@ -64,6 +64,10 @@ public class ScheduleMetadata {
     @Column(name = "solver_score", length = 50)
     private String solverScore;
 
+    @Builder.Default
+    @Column(name = "solver_revision", nullable = false)
+    private long solverRevision = 0;
+
     /**
      * Optional description or notes about this schedule
      */
@@ -72,7 +76,7 @@ public class ScheduleMetadata {
 
     /**
      * Per-constraint score breakdown serialized as JSON.
-     * Populated by SolutionPersistenceService after each best-solution callback.
+     * Populated by ScheduleScoreEvaluationService from the current schedule snapshots.
      * Example: [{"constraintName":"Teacher conflict","hardScore":-1,"softScore":0,"matchCount":1}]
      */
     @Column(name = "score_explanation", columnDefinition = "TEXT")
@@ -88,4 +92,3 @@ public class ScheduleMetadata {
         }
     }
 }
-

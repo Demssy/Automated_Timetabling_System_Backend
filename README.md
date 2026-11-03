@@ -15,7 +15,7 @@ Core capabilities include role-based account management, administration of dance
 | Optimization engine | Timefold Solver, Constraint Streams, `HardSoftScore` |
 | Security | Spring Security 6, stateless JWT authentication (JJWT) |
 | Persistence | Spring Data JPA, Hibernate, MySQL 8.x |
-| Database migrations | Flyway, migrations `V1` through `V23` |
+| Database migrations | Flyway, migrations `V1` through `V25` |
 | Build tool | Maven Wrapper (`mvnw` / `mvnw.cmd`) |
 | Tests | JUnit 5, Spring Boot Test, Timefold constraint testing, H2 |
 
@@ -159,6 +159,28 @@ The API listens at `http://localhost:8080` by default.
 ```
 
 The test profile uses an in-memory H2 database and disables Flyway, so tests do not require the local MySQL container.
+
+Run the reproducible Timefold/first-fit benchmark separately with:
+
+```powershell
+.\mvnw.cmd '-Dtest=SolverBenchmarkEvaluationTest' test
+```
+
+The output includes actual constraint-match counts, assignment completeness, prime-time occupancy and capacity, and demand satisfaction. A negative initialization score means some required planning variables remain unassigned. Runs reaching the 60-second safeguard are not reproducible by step count.
+
+Datasets A and B deliberately test a greedy student-allocation trap: private lessons are ordered by teacher, the first teacher can consume students needed by the second, and the second has fewer subscribers. Both algorithms receive the same input. Group lessons are pinned, so their room occupancy is known to both algorithms regardless of input order. Private lessons without a student are permitted by the solver model and do not necessarily cause a hard violation or negative initialization score, but count as incomplete in this benchmark. Prime-time occupancy and capacity count only fully assigned lessons, so differences can reflect unmatched students rather than better physical packing alone. These synthetic cases illustrate an ordering-sensitive baseline, not general performance across all inputs.
+
+The opt-in shared-fact checks expose a known MySQL publication race: availability, timeslot and group membership changes do not share the publication lock. They currently fail and are excluded from the default suite. To reproduce them, use a **disposable** MySQL database and set `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD`, then run:
+
+```powershell
+$env:SPRING_DATASOURCE_DRIVER_CLASS_NAME = 'com.mysql.cj.jdbc.Driver'
+$env:SPRING_JPA_DATABASE_PLATFORM = 'org.hibernate.dialect.MySQLDialect'
+$env:SPRING_JPA_HIBERNATE_DDL_AUTO = 'none'
+$env:SPRING_FLYWAY_ENABLED = 'true'
+.\mvnw.cmd '-Dtest=PublishedEditRollbackIntegrationTest#publicationCannotCommitAfterAnUncoordinatedConflictingFactChange' '-Dverify.shared-facts=true' test
+```
+
+Flyway applies the migrations to the selected database; do not point this test at a production database.
 
 ## 6. Key REST API Endpoints
 

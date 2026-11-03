@@ -1,6 +1,7 @@
 package com.timetable.backend.controller;
 
 
+import com.timetable.backend.domain.exception.ScheduleConflictException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,12 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ScheduleConflictException.class)
+    public ResponseEntity<Map<String, String>> handleScheduleConflict(ScheduleConflictException ex) {
+        log.warn("Schedule conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", ex.getMessage()));
+    }
 
 
     @ExceptionHandler(HttpClientErrorException.class)
@@ -65,4 +72,3 @@ public class GlobalExceptionHandler {
                 .body(Map.of("message", errors));
     }
 }
-

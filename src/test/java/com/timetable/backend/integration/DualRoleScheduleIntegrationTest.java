@@ -72,7 +72,7 @@ class DualRoleScheduleIntegrationTest {
         authService.register(new RegisterRequest(
                 "dual.schedule@example.com", "password123", "Dual Schedule", LocalDate.of(1990, 1, 1),
                 UserRole.TEACHER, null, null, null, "+1", List.of(style.getId()), "bio",
-                true, DanceLevel.BEGINNER, Set.of()));
+                null, true, DanceLevel.BEGINNER, Set.of()));
         // The students row was inserted natively: drop the cached base entity so Student loads polymorphically
         entityManager.flush();
         entityManager.clear();

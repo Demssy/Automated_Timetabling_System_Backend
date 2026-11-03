@@ -161,7 +161,7 @@ class AuthControllerTest {
         var request = new RegisterRequest(
                 "dual@test.com", "password123", "Dual Role", LocalDate.of(1992, 3, 10),
                 UserRole.TEACHER, null, null, null, "+1555000111", List.of("SALSA"), "Bio",
-                true, DanceLevel.BEGINNER, Set.of(1L));
+                null, true, DanceLevel.BEGINNER, Set.of(1L));
         var userResponse = new UserResponse(3L, "dual@test.com", "Dual Role", "TEACHER", true,
                 List.of(), List.of(), Set.of("ROLE_TEACHER", "ROLE_STUDENT"));
 

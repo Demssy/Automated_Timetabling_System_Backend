@@ -47,6 +47,21 @@ class SolverIntegrationTest {
     private static SolverFactory<DanceSchedule> solverFactory;
     private static DanceSchedule solvedSchedule;
 
+    @Test
+    void overlappingPinnedGroupsProduceHardViolation() {
+        DanceSchedule problem = buildRealisticProblem();
+        Lesson first = problem.getLessonList().get(0);
+        Lesson second = problem.getLessonList().get(1);
+        second.setTimeslot(first.getTimeslot());
+        SolverConfig config = new SolverConfig()
+                .withSolutionClass(DanceSchedule.class)
+                .withEntityClasses(Lesson.class)
+                .withConstraintProviderClass(DanceScheduleConstraintProvider.class)
+                .withTerminationConfig(new TerminationConfig().withSpentLimit(Duration.ofSeconds(2)));
+        DanceSchedule result = SolverFactory.<DanceSchedule>create(config).buildSolver().solve(problem);
+        assertThat(result.getScore().hardScore()).isNegative();
+    }
+
     @BeforeAll
     static void buildDatasetAndSolve() {
         solverFactory = buildSolverFactory();
@@ -164,7 +179,7 @@ class SolverIntegrationTest {
             for (Lesson b : scheduled) {
                 if (a.getId() < b.getId()
                         && a.getTeacher().equals(b.getTeacher())
-                        && a.getTimeslot().equals(b.getTimeslot())) {
+                        && overlaps(a.getTimeslot(), b.getTimeslot())) {
                     Assertions.fail(String.format(
                             "Teacher conflict detected! Teacher [%s] has TWO lessons at [%s %s-%s]: lesson#%d and lesson#%d",
                             a.getTeacher().getId(),
@@ -216,7 +231,7 @@ class SolverIntegrationTest {
 
         List<Lesson> conflicts = solvedSchedule.getLessonList().stream()
                 .filter(l -> l.isPrivate() && l.getTimeslot() != null)
-                .filter(l -> groupTimeslots.contains(l.getTimeslot()))
+                .filter(l -> groupTimeslots.stream().anyMatch(groupSlot -> overlaps(groupSlot, l.getTimeslot())))
                 .toList();
 
         assertThat(conflicts)
@@ -542,6 +557,12 @@ class SolverIntegrationTest {
                 .orElseThrow(() -> new NoSuchElementException("Timeslot not found: " + day + " " + start));
     }
 
+    private static boolean overlaps(Timeslot first, Timeslot second) {
+        return first.getDayOfWeek() == second.getDayOfWeek()
+                && first.getStartTime().isBefore(second.getEndTime())
+                && second.getStartTime().isBefore(first.getEndTime());
+    }
+
     private static boolean isInPrimeTime(Lesson lesson) {
         if (lesson.getTimeslot() == null) return false;
         LocalTime start = lesson.getTimeslot().getStartTime();
@@ -580,8 +601,5 @@ class SolverIntegrationTest {
                         e.getKey(), e.getValue()));
     }
 }
-
-
-
 
 
