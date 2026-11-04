@@ -1,13 +1,13 @@
 package com.timetable.backend.service;
 
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
-import ai.timefold.solver.core.api.solver.SolverManager;
 import ai.timefold.solver.core.api.solver.SolverStatus;
 import com.timetable.backend.domain.dto.ScoreExplanationResponse;
 import com.timetable.backend.domain.dto.UnmetStudentDTO;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
 import com.timetable.backend.solver.DanceSchedule;
+import com.timetable.backend.solver.SolverRuntimeRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,7 +28,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SolverService {
 
-    private final SolverManager<DanceSchedule, Long> solverManager;
+    private final SolverRuntimeRegistry runtimeRegistry;
+    private final SolverSettingsService settingsService;
     private final SolverProblemLoaderService problemLoaderService;
     private final SolverRunService solverRunService;
 
@@ -48,11 +49,8 @@ public class SolverService {
         log.info("Starting solver for schedule ID: {}", scheduleId);
         long revision = solverRunService.begin(scheduleId);
 
-        solverManager.solveBuilder()
-                .withProblemId(scheduleId)
-                .withProblemFinder(problemLoaderService::loadProblem)
-                .withBestSolutionConsumer(solution -> persistenceService.saveSolution(solution, revision))
-                .run();
+        runtimeRegistry.solve(scheduleId, settingsService.current(), problemLoaderService::loadProblem,
+                solution -> persistenceService.saveSolution(solution, revision));
     }
 
     /**
@@ -62,7 +60,7 @@ public class SolverService {
      * @return SolverStatus (NOT_SOLVING, SOLVING_SCHEDULED, SOLVING_ACTIVE)
      */
     public SolverStatus getSolverStatus(Long scheduleId) {
-        return solverManager.getSolverStatus(scheduleId);
+        return runtimeRegistry.status(scheduleId);
     }
 
     /**
@@ -75,14 +73,16 @@ public class SolverService {
     public boolean terminateEarly(Long scheduleId) {
         log.info("Terminating solver early for schedule ID: {}", scheduleId);
 
-        SolverStatus status = solverManager.getSolverStatus(scheduleId);
+        SolverStatus status = runtimeRegistry.status(scheduleId);
 
         if (status == SolverStatus.NOT_SOLVING) {
             log.warn("Cannot terminate - solver is not running for schedule {}", scheduleId);
             return false;
         }
 
-        solverManager.terminateEarly(scheduleId);
+        if (!runtimeRegistry.terminate(scheduleId)) {
+            return false;
+        }
         log.info("Early termination requested for schedule {}", scheduleId);
         return true;
     }
@@ -96,7 +96,7 @@ public class SolverService {
      */
     @SuppressWarnings("unused")
     public DanceSchedule getBestSolution(Long scheduleId) {
-        SolverStatus status = solverManager.getSolverStatus(scheduleId);
+        SolverStatus status = runtimeRegistry.status(scheduleId);
 
         if (status == SolverStatus.NOT_SOLVING) {
             log.warn("Solver is not running for schedule {}", scheduleId);
@@ -176,36 +176,37 @@ public class SolverService {
     public List<UnmetStudentDTO> getUnmetStudents(Long scheduleId) {
         // Step 1: build studentId -> assignedLessons map from schedule snapshot
         Map<Long, Integer> assignedByStudent = scheduledLessonRepository
-            .countAssignedLessonsByStudent(scheduleId)
-            .stream()
-            .collect(Collectors.toMap(
-                row -> (Long) row[0],
-                row -> ((Number) row[1]).intValue()
-            ));
+                .countAssignedLessonsByStudent(scheduleId)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> ((Number) row[1]).intValue()
+                ));
 
         // Step 2: collect all unique students subscribed to at least one teacher
         Set<Student> allSubscribedStudents = teacherRepository.findAll()
-            .stream()
-            .flatMap(teacher -> teacher.getPrivateStudents().stream())
-            .collect(Collectors.toSet());
+                .stream()
+                .flatMap(teacher -> teacher.getPrivateStudents().stream())
+                .collect(Collectors.toSet());
 
-        // Step 3: compare desired (availability windows) vs assigned for each student
+        // Step 3: compare student's explicit desiredLessonsPerWeek vs assigned lessons
         return allSubscribedStudents.stream()
-            .map(student -> {
-                int desired = weeklyAvailabilityRepository.findByUserIdAndAvailabilityRole(student.getId(), AvailabilityRole.STUDENT).size();
-                int assigned = assignedByStudent.getOrDefault(student.getId(), 0);
-                int missing = desired - assigned;
-                return new UnmetStudentDTO(
-                    student.getId(),
-                    student.getFullName(),
-                    student.getEmail(),
-                    desired,
-                    assigned,
-                    missing
-                );
-            })
-            .filter(dto -> dto.missingLessons() > 0)
-            .sorted(Comparator.comparingInt(UnmetStudentDTO::missingLessons).reversed())
-            .toList();
+                .filter(student -> student.getDesiredLessonsPerWeek() != null && student.getDesiredLessonsPerWeek() > 0)
+                .map(student -> {
+                    int desired = student.getDesiredLessonsPerWeek();
+                    int assigned = assignedByStudent.getOrDefault(student.getId(), 0);
+                    int missing = desired - assigned;
+                    return new UnmetStudentDTO(
+                            student.getId(),
+                            student.getFullName(),
+                            student.getEmail(),
+                            desired,
+                            assigned,
+                            missing
+                    );
+                })
+                .filter(dto -> dto.missingLessons() > 0)
+                .sorted(Comparator.comparingInt(UnmetStudentDTO::missingLessons).reversed())
+                .toList();
     }
 }

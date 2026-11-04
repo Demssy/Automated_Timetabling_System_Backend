@@ -68,7 +68,10 @@ public class TeacherService {
             }
             teacher.setDanceStyles(new HashSet<>(styles));
         }
-        return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
+        // Inside updateTeacher(Long id, UpdateTeacherRequest request):
+        Teacher savedTeacher = teacherRepository.save(teacher);
+        lessonService.syncPrivateLessonTemplatesForTeacher(savedTeacher, 5);
+        return teacherMapper.toTeacherResponse(savedTeacher);
     }
     @Transactional
     public void deleteTeacher(Long id) {
@@ -150,7 +153,9 @@ public class TeacherService {
             }
             teacher.setDanceStyles(new HashSet<>(styles));
         }
-        return teacherMapper.toTeacherResponse(teacherRepository.save(teacher));
+        Teacher savedTeacher = teacherRepository.save(teacher);
+        lessonService.syncPrivateLessonTemplatesForTeacher(savedTeacher, 5);
+        return teacherMapper.toTeacherResponse(savedTeacher);
     }
 
     private Teacher resolveTeacherByEmail(String email) {

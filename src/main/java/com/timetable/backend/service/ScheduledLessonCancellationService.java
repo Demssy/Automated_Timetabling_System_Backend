@@ -84,7 +84,7 @@ public class ScheduledLessonCancellationService {
                 scheduledLessonId, caller.getId(), scheduledLesson.getCancelledAt());
 
         ScheduledLesson saved = scheduledLessonRepository.save(scheduledLesson);
-        scoreEvaluationService.recalculate(saved.getSchedule().getId());
+        recalculateAfterEdit(saved.getSchedule());
         return lessonMapper.toScheduledLessonDTO(saved);
     }
 
@@ -118,12 +118,16 @@ public class ScheduledLessonCancellationService {
         log.info("Lesson (scheduledId={}) restored by admin user {}", scheduledLessonId, caller.getId());
 
         ScheduledLesson saved = scheduledLessonRepository.save(scheduledLesson);
-        if (saved.getSchedule().getStatus() == ScheduleStatus.PUBLISHED) {
-            scoreEvaluationService.validateAndRecalculate(saved.getSchedule().getId(), false);
-        } else {
-            scoreEvaluationService.recalculate(saved.getSchedule().getId());
-        }
+        recalculateAfterEdit(saved.getSchedule());
         return lessonMapper.toScheduledLessonDTO(saved);
+    }
+
+    private void recalculateAfterEdit(ScheduleMetadata schedule) {
+        if (schedule.getStatus() == ScheduleStatus.PUBLISHED) {
+            scoreEvaluationService.validateAndRecalculate(schedule.getId(), false);
+        } else {
+            scoreEvaluationService.recalculate(schedule.getId());
+        }
     }
 
     private void requireEditable(ScheduledLesson lesson) {

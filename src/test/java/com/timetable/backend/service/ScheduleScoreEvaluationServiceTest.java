@@ -2,6 +2,8 @@ package com.timetable.backend.service;
 
 import ai.timefold.solver.core.api.score.ScoreExplanation;
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
+import ai.timefold.solver.core.api.score.constraint.ConstraintMatchTotal;
+import ai.timefold.solver.core.api.score.constraint.ConstraintRef;
 import ai.timefold.solver.core.api.solver.SolutionManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -22,6 +24,8 @@ import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.TimeslotRepository;
 import com.timetable.backend.domain.repository.WeeklyAvailabilityRepository;
 import com.timetable.backend.solver.DanceSchedule;
+import com.timetable.backend.solver.SolverRuntimeFactory;
+import com.timetable.backend.domain.dto.SolverSettingsValues;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -52,14 +56,20 @@ class ScheduleScoreEvaluationServiceTest {
     @Mock private WeeklyAvailabilityRepository weekly;
     @Mock private ResourceUnavailabilityRepository unavailability;
     @Mock private SolutionManager<DanceSchedule, HardSoftScore> solutionManager;
+    @Mock private SolverRuntimeFactory runtimeFactory;
+    @Mock private SolverSettingsService settingsService;
     @Mock private ScoreExplanation<DanceSchedule, HardSoftScore> explanation;
+    @Mock private ConstraintMatchTotal<HardSoftScore> constraintTotal;
     private ScheduleScoreEvaluationService service;
     private ScheduleMetadata schedule;
 
     @BeforeEach
     void setUp() {
         service = new ScheduleScoreEvaluationService(schedules, snapshots, timeslots, teachers, students,
-                weekly, unavailability, solutionManager, new ObjectMapper());
+                weekly, unavailability, new ObjectMapper(), settingsService, runtimeFactory);
+        lenient().when(settingsService.current()).thenReturn(new SolverSettingsValues(
+                10, 0, 6, 15, 1, 1, 1, 1, 1, 100, 10, 50, 30, 1, 1));
+        lenient().when(runtimeFactory.solutionManager(any())).thenReturn(solutionManager);
         schedule = new ScheduleMetadata();
         schedule.setId(1L);
         lenient().when(schedules.findById(1L)).thenReturn(Optional.of(schedule));
@@ -148,6 +158,39 @@ class ScheduleScoreEvaluationServiceTest {
     }
 
     @Test
+    void publicationAppliesConfiguredHardPenaltyThreshold() {
+        Lesson source = new Lesson();
+        source.setTeacher(new Teacher());
+        ScheduledLesson row = snapshot(1L);
+        row.setLesson(source);
+        when(snapshots.findByScheduleIdOrderByIdAsc(1L)).thenReturn(List.of(row));
+        when(settingsService.current()).thenReturn(new SolverSettingsValues(
+                10, 15, 6, 15, 10, 1, 1, 1, 1, 100, 10, 50, 30, 1, 1));
+        when(explanation.getScore()).thenReturn(HardSoftScore.ofHard(-13));
+        service.validateAndRecalculate(1L, true);
+        when(explanation.getScore()).thenReturn(HardSoftScore.ofHard(-16));
+        assertThatThrownBy(() -> service.validateAndRecalculate(1L, true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("-16hard")
+                .hasMessageContaining("-15hard");
+    }
+
+    @Test
+    void dualRoleOverlapIsRejectedEvenWithAnAllowance() {
+        when(settingsService.current()).thenReturn(new SolverSettingsValues(
+                10, 15, 6, 15, 1, 1, 1, 1, 1, 100, 10, 50, 30, 1, 1));
+        when(snapshots.findByScheduleIdOrderByIdAsc(1L)).thenReturn(List.of());
+        when(constraintTotal.getScore()).thenReturn(HardSoftScore.ofHard(-1));
+        when(constraintTotal.getConstraintRef()).thenReturn(ConstraintRef.of("test",
+                "Teacher attends another lesson as student at the same time"));
+        when(explanation.getConstraintMatchTotalMap()).thenReturn(Map.of("dual-role", constraintTotal));
+        assertThatThrownBy(() -> service.recalculate(1L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("teach and attend");
+        verify(schedules, never()).save(any());
+    }
+
+    @Test
     void publicationIgnoresUnassignedPrivateTemplate() {
         Lesson group = new Lesson();
         group.setTeacher(new Teacher());
@@ -193,7 +236,7 @@ class ScheduleScoreEvaluationServiceTest {
         ObjectMapper failingMapper = mock(ObjectMapper.class);
         when(failingMapper.writeValueAsString(any())).thenThrow(new JsonMappingException(null, "broken"));
         service = new ScheduleScoreEvaluationService(schedules, snapshots, timeslots, teachers, students,
-                weekly, unavailability, solutionManager, failingMapper);
+                weekly, unavailability, failingMapper, settingsService, runtimeFactory);
         when(snapshots.findByScheduleIdOrderByIdAsc(1L)).thenReturn(List.of());
         assertThatThrownBy(() -> service.recalculate(1L))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("serialize");

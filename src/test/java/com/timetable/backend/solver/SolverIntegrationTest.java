@@ -7,6 +7,7 @@ import ai.timefold.solver.core.api.solver.SolutionManager;
 import ai.timefold.solver.core.config.solver.SolverConfig;
 import ai.timefold.solver.core.config.solver.termination.TerminationConfig;
 import com.timetable.backend.domain.model.*;
+import com.timetable.backend.domain.dto.SolverSettingsValues;
 import org.junit.jupiter.api.*;
 
 import java.time.*;
@@ -46,6 +47,23 @@ class SolverIntegrationTest {
     // ----------------------------------------------------------------
     private static SolverFactory<DanceSchedule> solverFactory;
     private static DanceSchedule solvedSchedule;
+
+    @Test
+    void runtimeFactoryAppliesPhysicalWeightToPinnedGroupConflict() {
+        DanceSchedule problem = buildRealisticProblem();
+        problem.getLessonList().get(1).setTimeslot(problem.getLessonList().get(0).getTimeslot());
+        SolverConfig config = new SolverConfig()
+                .withSolutionClass(DanceSchedule.class)
+                .withEntityClasses(Lesson.class)
+                .withConstraintProviderClass(DanceScheduleConstraintProvider.class);
+        SolverSettingsValues settings = new SolverSettingsValues(
+                10, 5, 6, 15, 10, 1, 1, 1, 1, 100, 10, 50, 30, 1, 1);
+        var explanation = new SolverRuntimeFactory(config).solutionManager(settings).explain(problem);
+        var conflict = explanation.getConstraintMatchTotalMap().values().stream()
+                .filter(total -> total.getConstraintRef().constraintName().equals("Room conflict"))
+                .findFirst().orElseThrow();
+        assertThat(conflict.getScore().hardScore()).isEqualTo(-10);
+    }
 
     @Test
     void overlappingPinnedGroupsProduceHardViolation() {
@@ -601,5 +619,4 @@ class SolverIntegrationTest {
                         e.getKey(), e.getValue()));
     }
 }
-
 

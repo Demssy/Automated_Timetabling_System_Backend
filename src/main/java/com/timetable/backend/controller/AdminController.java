@@ -76,6 +76,14 @@ public class AdminController {
         return ResponseEntity.ok(scheduleMetadataService.republish(id));
     }
 
+    /**
+     * Reverts a published (or archived) schedule back to DRAFT status.
+     */
+    @PatchMapping("/schedules/{id}/draft")
+    public ResponseEntity<ScheduleMetadataDTO> revertScheduleToDraft(@PathVariable Long id) {
+        return ResponseEntity.ok(scheduleMetadataService.revertToDraft(id));
+    }
+
     // =========================================================================
     // User management  —  /api/admin/users
     // =========================================================================

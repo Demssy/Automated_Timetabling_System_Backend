@@ -33,6 +33,21 @@ class DanceScheduleConstraintProviderTest {
         );
     }
 
+    @Test
+    void configuredTeacherDailyLimitChangesTheExcessCount() {
+        SolverWeightsConfig settings = new SolverWeightsConfig();
+        settings.setMaxTeacherLessonsPerDay(1);
+        ConstraintVerifier<DanceScheduleConstraintProvider, DanceSchedule> configured = ConstraintVerifier.build(
+                new DanceScheduleConstraintProvider(settings), DanceSchedule.class, Lesson.class);
+        Teacher teacher = createTeacher(1L, "Teacher");
+        Lesson first = createLesson(1L, teacher, createDanceGroup(1L, "First"),
+                createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00"), false, true);
+        Lesson second = createLesson(2L, teacher, createDanceGroup(2L, "Second"),
+                createTimeslot(2L, DayOfWeek.MONDAY, "11:00", "12:00"), false, true);
+        configured.verifyThat(DanceScheduleConstraintProvider::maxTeacherLessonsPerDay)
+                .given(first, second).penalizesBy(1);
+    }
+
     // ==================== HARD CONSTRAINT: Max 4 Private Lessons Per Timeslot ====================
 
     @Test

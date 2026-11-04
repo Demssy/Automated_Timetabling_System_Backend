@@ -40,11 +40,55 @@ public class LessonService {
     private final DanceStyleRepository danceStyleRepository;
     private final ScheduleScoreEvaluationService scoreEvaluationService;
 
-    /** Creates missing private lesson templates so the teacher has {@code targetCount} of them. */
+    /**
+     * Synchronizes active private lesson templates for a teacher based on their desiredLessonsPerWeek.
+     * Falls back to defaultCount only if desiredLessonsPerWeek is null.
+     */
     @Transactional
-    public void createDefaultPrivateLessonTemplates(Teacher teacher, int targetCount) {
-        long existingCount = lessonRepository.countByTeacherIdAndDanceGroupIsNull(teacher.getId());
-        long needed = targetCount - existingCount;
+    public void syncPrivateLessonTemplatesForTeacher(Teacher teacher, int defaultCount) {
+        List<Lesson> allTeacherLessons = lessonRepository.findAll().stream()
+                .filter(l -> l.getTeacher() != null && l.getTeacher().getId().equals(teacher.getId()))
+                .toList();
+
+        long activeGroupLessonsCount = allTeacherLessons.stream()
+                .filter(l -> !l.isPrivate() && l.isActive())
+                .count();
+
+        int totalDesired = teacher.getDesiredLessonsPerWeek() != null
+                ? teacher.getDesiredLessonsPerWeek()
+                : defaultCount;
+
+        // Calculate how many private templates this teacher actually needs
+        int targetPrivateCount = Math.max(0, totalDesired - (int) activeGroupLessonsCount);
+
+        List<Lesson> privateTemplates = allTeacherLessons.stream()
+                .filter(Lesson::isPrivate)
+                .sorted(Comparator.comparing(Lesson::isPinned).reversed()
+                        .thenComparing(Lesson::getId))
+                .toList();
+
+        int activeCount = 0;
+        List<Lesson> toUpdate = new java.util.ArrayList<>();
+
+        for (Lesson template : privateTemplates) {
+            if (activeCount < targetPrivateCount) {
+                if (!template.isActive()) {
+                    template.setActive(true);
+                    toUpdate.add(template);
+                }
+                activeCount++;
+            } else if (!template.isPinned() && template.isActive()) {
+                // Deactivate excess unpinned templates so the solver does not load them
+                template.setActive(false);
+                toUpdate.add(template);
+            }
+        }
+
+        if (!toUpdate.isEmpty()) {
+            lessonRepository.saveAll(toUpdate);
+        }
+
+        int needed = targetPrivateCount - activeCount;
         if (needed <= 0) {
             return;
         }
@@ -55,11 +99,10 @@ public class LessonService {
             log.warn("No dance styles available; skipping private lesson templates for teacher {}", teacher.getId());
             return;
         }
-        Room defaultRoom = roomRepository.findAll().stream()
-                .findFirst()
-                .orElse(null);
-        List<Lesson> templates = new java.util.ArrayList<>();
-        for (long i = 0; i < needed; i++) {
+        Room defaultRoom = roomRepository.findAll().stream().findFirst().orElse(null);
+
+        List<Lesson> newTemplates = new java.util.ArrayList<>();
+        for (int i = 0; i < needed; i++) {
             Lesson lesson = new Lesson();
             lesson.setTeacher(teacher);
             lesson.setDanceStyle(style);
@@ -71,9 +114,14 @@ public class LessonService {
             lesson.setPrivate(true);
             lesson.setActive(true);
             lesson.setPinned(false);
-            templates.add(lesson);
+            newTemplates.add(lesson);
         }
-        lessonRepository.saveAll(templates);
+        lessonRepository.saveAll(newTemplates);
+    }
+
+    @Transactional
+    public void createDefaultPrivateLessonTemplates(Teacher teacher, int targetCount) {
+        syncPrivateLessonTemplatesForTeacher(teacher, targetCount);
     }
 
     @Transactional(readOnly = true)
@@ -208,7 +256,7 @@ public class LessonService {
             scheduledLessonRepository.delete(scheduledLesson);
         }
         invalidateSolver(schedule);
-        scoreEvaluationService.recalculate(schedule.getId());
+        recalculateAfterEdit(schedule);
     }
 
 
@@ -237,7 +285,7 @@ public class LessonService {
         if (snapshotSchedule != null) {
             lessonRepository.flush();
             invalidateSolver(snapshotSchedule);
-            scoreEvaluationService.recalculate(snapshotSchedule.getId());
+            recalculateAfterEdit(snapshotSchedule);
         }
     }
 

@@ -1,10 +1,12 @@
 package com.timetable.backend.config;
 
 import jakarta.annotation.PostConstruct;
+import com.timetable.backend.domain.dto.SolverSettingsValues;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import java.util.function.Supplier;
 
 /**
  * Externalized configuration for Timefold solver constraint weights and thresholds.
@@ -14,7 +16,7 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>Example override in application.properties:
  * <pre>
- *   solver.weights.reward-student-assignment=120
+ *   solver.weights.reward-student-assignment=90
  *   solver.weights.penalty-same-day-student=80
  * </pre>
  * </p>
@@ -34,14 +36,55 @@ public class SolverWeightsConfig {
      * <p>Falls back to a fresh default instance so tests never get a null pointer.</p>
      */
     private static volatile SolverWeightsConfig INSTANCE;
+    private static final ThreadLocal<SolverWeightsConfig> FACTORY_WEIGHTS = new ThreadLocal<>();
 
     /**
      * Returns the Spring-managed instance, or a default instance if Spring has not
      * yet initialized (e.g., in unit tests that build the constraint verifier directly).
      */
     public static SolverWeightsConfig getInstance() {
+        SolverWeightsConfig factoryWeights = FACTORY_WEIGHTS.get();
+        if (factoryWeights != null) {
+            return factoryWeights;
+        }
         return INSTANCE != null ? INSTANCE : new SolverWeightsConfig();
     }
+
+    public static <T> T withFactoryWeights(SolverSettingsValues values, Supplier<T> action) {
+        SolverWeightsConfig previous = FACTORY_WEIGHTS.get();
+        SolverWeightsConfig config = new SolverWeightsConfig();
+        config.setRewardStudentAssignment(values.privateLessonAssignmentReward());
+        config.setRewardPrimeTime(values.primeTimeLessonReward());
+        config.setTeacherGapThresholdMinutes(values.teacherBreakThresholdMinutes());
+        config.setMaxTeacherLessonsPerDay(values.teacherMaxDailyLessons());
+        config.setPenaltyStudentUnderDesiredLessons(values.studentUnfulfilledLessonPenalty());
+        config.setPenaltyTeacherUnderDesiredLessons(values.teacherUnfulfilledLessonPenalty());
+        config.setPhysicalConflictHardWeight(values.physicalConflictHardWeight());
+        config.setWeeklyAvailabilityHardWeight(values.weeklyAvailabilityHardWeight());
+        config.setTeacherDailyLimitHardWeight(values.teacherDailyLimitHardWeight());
+        config.setStudentMultipleDailyPrivateHardWeight(values.studentMultipleDailyPrivateHardWeight());
+        config.setWeeklyQuotaOverflowHardWeight(values.weeklyQuotaOverflowHardWeight());
+        config.setTeacherGapPenaltyMultiplier(values.teacherGapPenaltyMultiplier());
+        config.setTeacherWorkloadFairnessMultiplier(values.teacherWorkloadFairnessMultiplier());
+        FACTORY_WEIGHTS.set(config);
+        try {
+            return action.get();
+        } finally {
+            if (previous == null) {
+                FACTORY_WEIGHTS.remove();
+            } else {
+                FACTORY_WEIGHTS.set(previous);
+            }
+        }
+    }
+
+    private int physicalConflictHardWeight = 1;
+    private int weeklyAvailabilityHardWeight = 1;
+    private int teacherDailyLimitHardWeight = 1;
+    private int studentMultipleDailyPrivateHardWeight = 1;
+    private int weeklyQuotaOverflowHardWeight = 1;
+    private int teacherGapPenaltyMultiplier = 1;
+    private int teacherWorkloadFairnessMultiplier = 1;
 
     /** Called by Spring after all properties are bound. Publishes {@code this} to the static holder. */
     @PostConstruct
@@ -93,4 +136,3 @@ public class SolverWeightsConfig {
      */
     private int penaltyTeacherUnderDesiredLessons = 30;
 }
-

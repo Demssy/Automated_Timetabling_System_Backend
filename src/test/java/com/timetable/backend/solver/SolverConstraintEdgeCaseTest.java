@@ -45,6 +45,23 @@ class SolverConstraintEdgeCaseTest {
         );
     }
 
+    @Test
+    void configuredTeacherBreakThresholdExcludesShortGap() {
+        SolverWeightsConfig settings = new SolverWeightsConfig();
+        settings.setTeacherGapThresholdMinutes(30);
+        ConstraintVerifier<DanceScheduleConstraintProvider, DanceSchedule> configured = ConstraintVerifier.build(
+                new DanceScheduleConstraintProvider(settings), DanceSchedule.class, Lesson.class);
+        Teacher teacher = teacher(1L, "Teacher");
+        Lesson first = groupLesson(1L, teacher, danceGroup(1L, "First"),
+                timeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00"));
+        Lesson second = groupLesson(2L, teacher, danceGroup(2L, "Second"),
+                timeslot(2L, DayOfWeek.MONDAY, "10:20", "11:20"));
+        verifier.verifyThat(DanceScheduleConstraintProvider::minimizeTeacherGaps)
+                .given(first, second).penalizesBy(1);
+        configured.verifyThat(DanceScheduleConstraintProvider::minimizeTeacherGaps)
+                .given(first, second).penalizesBy(0);
+    }
+
     // ================================================================
     //  ROOM CAPACITY — Max 4 private lessons per timeslot
     // ================================================================
@@ -713,4 +730,3 @@ class SolverConstraintEdgeCaseTest {
         return wa;
     }
 }
-
