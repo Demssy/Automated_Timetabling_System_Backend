@@ -15,7 +15,7 @@ Core capabilities include role-based account management, administration of dance
 | Optimization engine | Timefold Solver, Constraint Streams, `HardSoftScore` |
 | Security | Spring Security 6, stateless JWT authentication (JJWT) |
 | Persistence | Spring Data JPA, Hibernate, MySQL 8.x |
-| Database migrations | Flyway, migrations `V1` through `V25` |
+| Database migrations | Flyway, migrations `V1` through `V26` |
 | Build tool | Maven Wrapper (`mvnw` / `mvnw.cmd`) |
 | Tests | JUnit 5, Spring Boot Test, Timefold constraint testing, H2 |
 
@@ -89,6 +89,34 @@ Timefold evaluates each candidate schedule with a lexicographic `HardSoftScore` 
 | Student desired weekly count | Penalizes students for falling short of their desired weekly lesson count. |
 
 Weights and thresholds are configurable under `solver.weights.*` in `src/main/resources/application.properties` and `SolverWeightsConfig`. For example, the configured application properties reward private lesson assignment by 100 and prime-time use by 10. Constraint tests are in `src/test/java/com/timetable/backend/solver`.
+
+The admin solver settings API stores one active set and named presets in the database. Reset restores the configured startup defaults without deleting presets. Selecting or editing settings does not start the solver or recalculate an existing schedule. New runs use a snapshot of the active settings; already running jobs keep their original snapshot. Score explanations and subsequent schedule validations use the current settings.
+
+The following integer fields form a complete settings object:
+
+| Field | Default | Range |
+|---|---:|---|
+| `solverTimeLimitSeconds` | 10 | 5-300 |
+| `maxAllowedHardPenalty` | 0 | >= 0 |
+| `teacherMaxDailyLessons` | 6 | >= 1 |
+| `teacherBreakThresholdMinutes` | 15 | >= 0 |
+| `physicalConflictHardWeight` | 1 | 1-50 |
+| `weeklyAvailabilityHardWeight` | 1 | 1-20 |
+| `teacherDailyLimitHardWeight` | 1 | 0-20 |
+| `studentMultipleDailyPrivateHardWeight` | 1 | 0-20 |
+| `weeklyQuotaOverflowHardWeight` | 1 | 1-20 |
+| `privateLessonAssignmentReward` | 100 | 0-100 |
+| `primeTimeLessonReward` | 10 | 0-100 |
+| `studentUnfulfilledLessonPenalty` | 50 | 0-100 |
+| `teacherUnfulfilledLessonPenalty` | 30 | 0-100 |
+| `teacherGapPenaltyMultiplier` | 1 | 0-100 |
+| `teacherWorkloadFairnessMultiplier` | 1 | 0-100 |
+
+Defaults for the existing weights, limits and solver time are derived from application configuration and must satisfy the ranges above; invalid configured defaults prevent startup. A nonzero `maxAllowedHardPenalty` permits publication or changes to a published schedule if its initialized hard score is at least the negative threshold; mandatory assignment checks remain in force. A teacher cannot teach and attend another lesson at the same time even when the threshold is nonzero.
+
+Setting `teacherDailyLimitHardWeight` or `studentMultipleDailyPrivateHardWeight` to zero disables that particular penalty. Other hard weights remain at least one. Editing an active preset updates the active values; deleting it leaves those values active as a custom set.
+
+Scores use Timefold's 32-bit `HardSoftScore`. The soft-weight limit reduces, but does not eliminate, the risk of integer overflow for unusually large schedules or other extreme inputs.
 
 ## 5. Local Setup and Execution
 
@@ -196,6 +224,12 @@ All endpoints other than the public authentication and selected public dance-sty
 | Solver (admin) | `GET` | `/api/admin/solver/solution/{scheduleId}` | Retrieve the solution |
 | Solver (admin) | `GET` | `/api/admin/solver/score-explanation/{scheduleId}` | Explain score matches and violations |
 | Solver (admin) | `GET` | `/api/admin/solver/unmet-students/{scheduleId}` | Retrieve unmet student demand |
+| Solver settings (admin) | `GET` | `/api/v1/solver/settings` | Get active fields, `defaults`, and `activePresetId` |
+| Solver settings (admin) | `PUT` | `/api/v1/solver/settings` | Replace all active fields; clears the active preset association |
+| Solver settings (admin) | `POST` | `/api/v1/solver/settings/reset` | Restore defaults without deleting presets |
+| Solver settings (admin) | `GET`, `POST` | `/api/v1/solver/settings/presets` | List presets or create one with `name` and `settings` |
+| Solver settings (admin) | `PUT`, `DELETE` | `/api/v1/solver/settings/presets/{id}` | Replace or delete a preset |
+| Solver settings (admin) | `POST` | `/api/v1/solver/settings/presets/{id}/activate` | Activate a preset |
 | Schedules | `GET` | `/api/schedules` | List schedules |
 | Schedules | `GET` | `/api/schedules/{id}` | Retrieve schedule metadata |
 | Weekly availability | `GET` | `/api/availability/weekly` | Read weekly availability |

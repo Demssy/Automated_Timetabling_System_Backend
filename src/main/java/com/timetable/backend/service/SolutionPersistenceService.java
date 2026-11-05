@@ -1,5 +1,6 @@
 package com.timetable.backend.service;
 
+import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import com.timetable.backend.domain.model.ScheduleMetadata;
 import com.timetable.backend.domain.model.ScheduledLesson;
 import com.timetable.backend.domain.model.ScheduledLessonStatus;
@@ -7,6 +8,7 @@ import com.timetable.backend.domain.model.ScheduleStatus;
 import com.timetable.backend.domain.repository.ScheduleMetadataRepository;
 import com.timetable.backend.domain.repository.ScheduledLessonRepository;
 import com.timetable.backend.solver.DanceSchedule;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,11 +26,12 @@ public class SolutionPersistenceService {
     private final ScheduledLessonRepository scheduledLessonRepository;
     private final ScheduleMetadataRepository scheduleMetadataRepository;
     private final ScheduleScoreEvaluationService scoreEvaluationService;
+    private final EntityManager entityManager;
 
     @Transactional
     public void saveSolution(DanceSchedule solution, long revision) {
         log.info("SolutionPersistenceService: Saving solution snapshot for schedule ID: {}, score: {}",
-            solution.getId(), solution.getScore());
+                solution.getId(), solution.getScore());
 
         if (solution.getId() == null) {
             throw new IllegalArgumentException("Schedule ID is required to persist solution snapshot.");
@@ -39,7 +42,7 @@ public class SolutionPersistenceService {
         }
 
         ScheduleMetadata schedule = scheduleMetadataRepository.findByIdForUpdate(solution.getId())
-            .orElseThrow(() -> new IllegalArgumentException("Schedule not found: " + solution.getId()));
+                .orElseThrow(() -> new IllegalArgumentException("Schedule not found: " + solution.getId()));
 
         if (schedule.getStatus() != ScheduleStatus.DRAFT || schedule.getSolverRevision() != revision) {
             log.info("Discarding stale solver result for schedule {}, revision {}", solution.getId(), revision);
@@ -49,11 +52,11 @@ public class SolutionPersistenceService {
         // Build a lookup of already persisted snapshot rows for this schedule.
         var existingByLessonId = new HashMap<Long, ScheduledLesson>();
         scheduledLessonRepository.findByScheduleIdOrderByIdAsc(schedule.getId())
-            .forEach(existing -> {
-                if (existing.getLesson() != null && existing.getLesson().getId() != null) {
-                    existingByLessonId.put(existing.getLesson().getId(), existing);
-                }
-            });
+                .forEach(existing -> {
+                    if (existing.getLesson() != null && existing.getLesson().getId() != null) {
+                        existingByLessonId.put(existing.getLesson().getId(), existing);
+                    }
+                });
 
         var snapshotsToSave = new ArrayList<ScheduledLesson>(solution.getLessonList().size());
         var incomingLessonIds = new HashSet<Long>();
@@ -76,13 +79,13 @@ public class SolutionPersistenceService {
             // Skip duplicate lessons from solver output to avoid duplicate rows.
             if (!incomingLessonIds.add(lesson.getId())) {
                 log.warn("Duplicate lesson {} detected in solver output for schedule {}. Skipping duplicate row.",
-                    lesson.getId(), schedule.getId());
+                        lesson.getId(), schedule.getId());
                 return;
             }
 
             var status = lesson.getTimeslot() != null
-                ? ScheduledLessonStatus.ASSIGNED
-                : ScheduledLessonStatus.UNASSIGNED;
+                    ? ScheduledLessonStatus.ASSIGNED
+                    : ScheduledLessonStatus.UNASSIGNED;
 
             if (existing != null) {
                 existing.setTimeslot(lesson.getTimeslot());
@@ -94,36 +97,38 @@ public class SolutionPersistenceService {
             }
 
             snapshotsToSave.add(new ScheduledLesson(
-                null,
-                lesson,
-                null,
-                schedule,
-                lesson.getTimeslot(),
-                status,
-                lesson.getRoom(),
-                lesson.getStudent(),
-                false,
-                null,
-                null,
-                null
+                    null,
+                    lesson,
+                    null,
+                    schedule,
+                    lesson.getTimeslot(),
+                    status,
+                    lesson.getRoom(),
+                    lesson.getStudent(),
+                    false,
+                    null,
+                    null,
+                    null
             ));
         });
 
         // Remove stale snapshot rows that are no longer present in the incoming solution.
         var staleSnapshots = existingByLessonId.values().stream()
-            .filter(existing -> !existing.isCancelled()
-                && !incomingLessonIds.contains(existing.getLesson().getId()))
-            .toList();
+                .filter(existing -> !existing.isCancelled()
+                        && !incomingLessonIds.contains(existing.getLesson().getId()))
+                .toList();
         if (!staleSnapshots.isEmpty()) {
-            scheduledLessonRepository.deleteAll(staleSnapshots);
+            scheduledLessonRepository.deleteAllInBatch(staleSnapshots);
         }
 
-        scheduledLessonRepository.saveAll(snapshotsToSave);
+        scheduledLessonRepository.saveAllAndFlush(snapshotsToSave);
 
-        scoreEvaluationService.recalculate(schedule.getId());
+        // Clear Persistence Context so recalculate() loads clean managed entities instead of detached solver clones
+        entityManager.clear();
+
+        HardSoftScore finalScore = scoreEvaluationService.recalculate(schedule.getId());
 
         log.info("Successfully saved {} snapshot lessons for schedule {}, score={}",
-            snapshotsToSave.size(), schedule.getId(), schedule.getSolverScore());
+                snapshotsToSave.size(), schedule.getId(), finalScore);
     }
-
 }
