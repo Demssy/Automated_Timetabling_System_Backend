@@ -21,6 +21,7 @@ import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Constraint provider for dance schedule optimization.
@@ -54,6 +55,24 @@ import java.util.Objects;
  * - Load balancing: Distribute lessons fairly among teachers
  */
 public class DanceScheduleConstraintProvider implements ConstraintProvider {
+
+    public static final String ROOM_CONFLICT = "Room conflict";
+    public static final String ROOM_CAPACITY = "Max 4 private lessons per timeslot";
+    public static final String PRIVATE_DURING_GROUP = "No private lessons during group lesson";
+    public static final String TEACHER_CONFLICT = "Teacher conflict";
+    public static final String TEACHER_STUDENT_CONFLICT = "Teacher attends another lesson as student at the same time";
+    public static final String TEACHER_ATTENDS_OWN_LESSON = "Teacher cannot teach a lesson they attend as student";
+    public static final String STUDENT_CONFLICT = "Student conflict (double booking)";
+    public static final String TEACHER_WEEKLY_AVAILABILITY = "Teacher scheduled outside weekly availability";
+    public static final String STUDENT_WEEKLY_AVAILABILITY = "Student scheduled outside weekly availability";
+    public static final String TEACHER_UNAVAILABILITY = "Teacher one-time unavailability conflict";
+    public static final String STUDENT_UNAVAILABILITY = "Student one-time unavailability conflict";
+
+    public static final Set<String> MANDATORY_CONSTRAINTS = Set.of(
+            ROOM_CONFLICT, ROOM_CAPACITY, PRIVATE_DURING_GROUP, TEACHER_CONFLICT,
+            TEACHER_STUDENT_CONFLICT, TEACHER_ATTENDS_OWN_LESSON, STUDENT_CONFLICT,
+            TEACHER_WEEKLY_AVAILABILITY, STUDENT_WEEKLY_AVAILABILITY,
+            TEACHER_UNAVAILABILITY, STUDENT_UNAVAILABILITY);
 
     /**
      * Gaps up to this many minutes are considered a normal break between lessons
@@ -92,7 +111,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     public Constraint[] defineConstraints(ConstraintFactory constraintFactory) {
         return new Constraint[] {
 
-                // Hard constraint: private lesson cannot have timeslot without student or student without timeslot
+                // Hard constraint: an assigned student must have a timeslot
                 privateLessonIncompleteAssignment(constraintFactory),
 
                 // Hard constraints — single-room capacity
@@ -125,6 +144,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
 
                 // Soft constraints
                 rewardStudentAssignment(constraintFactory),
+                unassignedPrivateTemplate(constraintFactory),
                 studentMeetDesiredLessonsPerWeek(constraintFactory),
                 teacherMeetDesiredLessonsPerWeek(constraintFactory),
                 minimizeTeacherGaps(constraintFactory),
@@ -134,15 +154,15 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     }
     /**
      * HARD CONSTRAINT: Private Lesson Incomplete Assignment
-     * Prevents the solver from assigning a timeslot to an unmatched private template (student == null)
-     * or assigning a student without a timeslot (timeslot == null).
+     * Prevents half-assigned private templates (timeslot without student, or student without timeslot).
+     * A completely unassigned template must have BOTH student == null and timeslot == null.
      */
     Constraint privateLessonIncompleteAssignment(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> lesson.isPrivate()
-                        && ((lesson.getTimeslot() != null && lesson.getStudent() == null)
-                        || (lesson.getTimeslot() == null && lesson.getStudent() != null)))
+                        && lesson.getStudent() != null
+                        && lesson.getTimeslot() == null)
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
                 .asConstraint("Private lesson must have both student and timeslot assigned");
     }
@@ -160,13 +180,13 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
 
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.isPrivate() && lesson.getTimeslot() != null)
+                .filter(lesson -> lesson.isPrivate() && isScheduled(lesson))
                 .groupBy(lesson -> new RoomDay(lesson.getRoom(), lesson.getTimeslot().getDayOfWeek()),
                         ConstraintCollectors.toList())
                 .filter((roomDay, lessons) -> excessPrivateStarts(lessons) > 0)
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()),
                          (roomDay, lessons) -> excessPrivateStarts(lessons))
-                .asConstraint("Max 4 private lessons per timeslot");
+                .asConstraint(ROOM_CAPACITY);
     }
 
     private static int excessPrivateStarts(List<Lesson> lessons) {
@@ -197,8 +217,13 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 && second.getStartTime().isBefore(first.getEndTime());
     }
 
+
     private static boolean sameRoom(Lesson first, Lesson second) {
         return Objects.equals(first.getRoom(), second.getRoom());
+    }
+
+    private static boolean isScheduled(Lesson lesson) {
+        return lesson.getTimeslot() != null && (!lesson.isPrivate() || lesson.getStudent() != null);
     }
 
     /**
@@ -212,14 +237,14 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint noPrivateDuringGroupLesson(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.isPrivate() && lesson.getTimeslot() != null)
+                .filter(lesson -> lesson.isPrivate() && isScheduled(lesson))
                 .join(constraintFactory.forEachIncludingNullVars(Lesson.class),
                         Joiners.filtering((privateLsn, groupLsn) ->
                                 !groupLsn.isPrivate() && sameRoom(privateLsn, groupLsn)
                                         && overlaps(privateLsn.getTimeslot(), groupLsn.getTimeslot()))
                 )
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("No private lessons during group lesson");
+                .asConstraint(PRIVATE_DURING_GROUP);
     }
 
     Constraint roomConflict(ConstraintFactory constraintFactory) {
@@ -231,7 +256,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                         Joiners.filtering((first, second) -> sameRoom(first, second)
                                 && overlaps(first.getTimeslot(), second.getTimeslot())))
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Room conflict");
+                .asConstraint(ROOM_CONFLICT);
     }
 
     /**
@@ -248,9 +273,9 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint teacherConflict(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
-                                .filter(lesson -> lesson.getTimeslot() != null),
+                                .filter(DanceScheduleConstraintProvider::isScheduled),
                         // Different lessons
                         Joiners.lessThan(Lesson::getId),
                         // Same teacher
@@ -258,7 +283,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                         Joiners.filtering((first, second) -> overlaps(first.getTimeslot(), second.getTimeslot()))
                 )
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Teacher conflict");
+                .asConstraint(TEACHER_CONFLICT);
     }
 
     /**
@@ -270,16 +295,16 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint teacherStudentTimeslotConflict(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
-                                .filter(lesson -> lesson.getTimeslot() != null),
+                                .filter(DanceScheduleConstraintProvider::isScheduled),
                         Joiners.filtering((teaching, attended) -> teaching != attended
                                 && overlaps(teaching.getTimeslot(), attended.getTimeslot())
                                 && teaching.getTeacher() != null
                                 && attendsAsStudent(attended, teaching.getTeacher().getId()))
                 )
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Teacher attends another lesson as student at the same time");
+                .asConstraint(TEACHER_STUDENT_CONFLICT);
     }
 
     /**
@@ -292,7 +317,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .filter(lesson -> lesson.getTeacher() != null
                         && attendsAsStudent(lesson, lesson.getTeacher().getId()))
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Teacher cannot teach a lesson they attend as student");
+                .asConstraint(TEACHER_ATTENDS_OWN_LESSON);
     }
 
     /** True if the user with the given id attends the lesson as a student (private or group member). */
@@ -320,21 +345,31 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      * 3-argument groupBy API that has known issues in Timefold 1.6.0.</p>
      */
     Constraint maxTeacherLessonsPerDay(ConstraintFactory constraintFactory) {
-        record TeacherDay(Long teacherId, DayOfWeek day) {}
+        record TeacherDay(com.timetable.backend.domain.model.Teacher teacher, DayOfWeek day) {}
 
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .groupBy(
-                    lesson -> new TeacherDay(
-                        lesson.getTeacher().getId(),
-                        lesson.getTimeslot().getDayOfWeek()
-                    ),
-                    ConstraintCollectors.count()
+                        lesson -> new TeacherDay(
+                                lesson.getTeacher(),
+                                lesson.getTimeslot().getDayOfWeek()
+                        ),
+                        ConstraintCollectors.count()
                 )
-                .filter((key, count) -> count > weights.getMaxTeacherLessonsPerDay())
+                .filter((key, count) -> {
+                    int dailyCap = key.teacher().getMaxDailyHours() > 0
+                            ? Math.min(key.teacher().getMaxDailyHours(), weights.getMaxTeacherLessonsPerDay())
+                            : weights.getMaxTeacherLessonsPerDay();
+                    return count > dailyCap;
+                })
                 .penalize(HardSoftScore.ofHard(weights.getTeacherDailyLimitHardWeight()),
-                        (key, count) -> count - weights.getMaxTeacherLessonsPerDay())
+                        (key, count) -> {
+                            int dailyCap = key.teacher().getMaxDailyHours() > 0
+                                    ? Math.min(key.teacher().getMaxDailyHours(), weights.getMaxTeacherLessonsPerDay())
+                                    : weights.getMaxTeacherLessonsPerDay();
+                            return count - dailyCap;
+                        })
                 .asConstraint("Max 6 lessons per teacher per day");
     }
 
@@ -344,7 +379,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint teacherOutsideWeeklyAvailability(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 // We penalize if there does NOT exist a weekly availability window that fully contains the lesson
                 .ifNotExists(WeeklyAvailability.class,
                         // Match the teacher by comparing their shared AbstractUser
@@ -360,7 +395,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                         )
                 )
                 .penalize(HardSoftScore.ofHard(weights.getWeeklyAvailabilityHardWeight()))
-                .asConstraint("Teacher scheduled outside weekly availability");
+                .asConstraint(TEACHER_WEEKLY_AVAILABILITY);
     }
     /**
      * HARD CONSTRAINT: Teacher One-Time Unavailability (Exceptions)
@@ -369,7 +404,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint teacherOneTimeUnavailability(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .join(ResourceUnavailability.class,
                         Joiners.equal(lesson -> lesson.getTeacher().getUser(), ResourceUnavailability::getUser),
                         Joiners.equal(lesson -> AvailabilityRole.TEACHER, ResourceUnavailability::getAvailabilityRole)
@@ -386,7 +421,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                             lesson.getTimeslot().getEndTime().isAfter(unavail.getStartTime());
                 })
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Teacher one-time unavailability conflict");
+                .asConstraint(TEACHER_UNAVAILABILITY);
     }
 
     private LocalDate mapDayOfWeekToDate(LocalDate scheduleStartDate, DayOfWeek dayOfWeek) {
@@ -428,15 +463,15 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint studentConflict(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
-                                .filter(lesson -> lesson.getTimeslot() != null),
+                                .filter(DanceScheduleConstraintProvider::isScheduled),
                         Joiners.lessThan(Lesson::getId),
                         Joiners.filtering((first, second) -> overlaps(first.getTimeslot(), second.getTimeslot())
                                 && sharesStudent(first, second))
                 )
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Student conflict (double booking)");
+                .asConstraint(STUDENT_CONFLICT);
     }
 
     private static boolean sharesStudent(Lesson first, Lesson second) {
@@ -494,7 +529,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                         )
                 )
                 .penalize(HardSoftScore.ofHard(weights.getWeeklyAvailabilityHardWeight()))
-                .asConstraint("Student scheduled outside weekly availability");
+                .asConstraint(STUDENT_WEEKLY_AVAILABILITY);
     }
 
     /**
@@ -517,7 +552,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                            lesson.getTimeslot().getEndTime().isAfter(unavail.getStartTime());
                 })
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Student one-time unavailability conflict");
+                .asConstraint(STUDENT_UNAVAILABILITY);
     }
 
     /**
@@ -536,6 +571,20 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     }
 
     /**
+     * SOFT CONSTRAINT: Penalize Completely Unassigned Private Template
+     * Encourages the solver to fill every private template when hard constraints allow,
+     * without forcing hard violations when studio capacity or availability is exhausted.
+     */
+    Constraint unassignedPrivateTemplate(ConstraintFactory constraintFactory) {
+        int penaltyWeight = 2 * Math.max(1, weights.getRewardStudentAssignment());
+        return constraintFactory
+                .forEachIncludingNullVars(Lesson.class)
+                .filter(lesson -> lesson.isPrivate() && lesson.getStudent() == null)
+                .penalize(HardSoftScore.ofSoft(penaltyWeight))
+                .asConstraint("Unassigned private lesson template");
+    }
+
+    /**
      * SOFT CONSTRAINT: Minimize Teacher Gaps
      *
      * Penalizes idle gaps between a teacher's lessons on the same day,
@@ -549,9 +598,9 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint minimizeTeacherGaps(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .join(constraintFactory.forEachIncludingNullVars(Lesson.class)
-                                .filter(lesson -> lesson.getTimeslot() != null),
+                                .filter(DanceScheduleConstraintProvider::isScheduled),
                         Joiners.lessThan(Lesson::getId),
                         Joiners.equal(Lesson::getTeacher),
                         Joiners.equal(lesson -> lesson.getTimeslot().getDayOfWeek())
@@ -602,7 +651,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> {
-                    if (lesson.getTimeslot() == null) {
+                    if (!isScheduled(lesson)) {
                         return false;
                     }
                     LocalTime start = lesson.getTimeslot().getStartTime();
@@ -629,7 +678,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint balanceTeacherLoad(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .groupBy(Lesson::getTeacher, ConstraintCollectors.count())
                 .penalize(HardSoftScore.ofSoft(weights.getTeacherWorkloadFairnessMultiplier()),
                          (teacher, count) -> count * count) // Square penalty for imbalance
@@ -750,9 +799,9 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .groupBy(Lesson::getStudent, ConstraintCollectors.count())
                 .filter((student, count) ->
                         student.getDesiredLessonsPerWeek() != null
-                        && count < student.getDesiredLessonsPerWeek())
-                .penalize(HardSoftScore.ofSoft(weights.getPenaltyStudentUnderDesiredLessons()),
-                        (student, count) -> student.getDesiredLessonsPerWeek() - count)
+                                && student.getDesiredLessonsPerWeek() > 0)
+                .reward(HardSoftScore.ofSoft(weights.getPenaltyStudentUnderDesiredLessons()),
+                        (student, count) -> Math.min(count, student.getDesiredLessonsPerWeek()))
                 .asConstraint("Student should meet desired lessons per week");
     }
 
@@ -768,7 +817,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint teacherDoNotExceedDesiredLessonsPerWeek(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .groupBy(Lesson::getTeacher, ConstraintCollectors.count())
                 .filter((teacher, count) ->
                         teacher.getDesiredLessonsPerWeek() != null
@@ -790,13 +839,13 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     Constraint teacherMeetDesiredLessonsPerWeek(ConstraintFactory constraintFactory) {
         return constraintFactory
                 .forEachIncludingNullVars(Lesson.class)
-                .filter(lesson -> lesson.getTimeslot() != null)
+                .filter(DanceScheduleConstraintProvider::isScheduled)
                 .groupBy(Lesson::getTeacher, ConstraintCollectors.count())
                 .filter((teacher, count) ->
                         teacher.getDesiredLessonsPerWeek() != null
-                        && count < teacher.getDesiredLessonsPerWeek())
-                .penalize(HardSoftScore.ofSoft(weights.getPenaltyTeacherUnderDesiredLessons()),
-                        (teacher, count) -> teacher.getDesiredLessonsPerWeek() - count)
+                                && teacher.getDesiredLessonsPerWeek() > 0)
+                .reward(HardSoftScore.ofSoft(weights.getPenaltyTeacherUnderDesiredLessons()),
+                        (teacher, count) -> Math.min(count, teacher.getDesiredLessonsPerWeek()))
                 .asConstraint("Teacher should meet desired lessons per week");
     }
 }

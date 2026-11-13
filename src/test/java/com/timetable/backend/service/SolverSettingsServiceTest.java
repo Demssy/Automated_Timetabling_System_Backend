@@ -85,6 +85,6 @@ class SolverSettingsServiceTest {
     }
 
     private SolverSettingsValues values(int physical, int threshold) {
-        return new SolverSettingsValues(10, threshold, 6, 15, physical, 1, 1, 1, 1, 100, 10, 50, 30, 1, 1);
+        return new SolverSettingsValues(10, threshold, 6, 15, physical, 1, 1, 1, 1, 60, 15, 35, 25, 8, 3);
     }
 }

@@ -143,15 +143,15 @@ class ManualEditAndPublishGuardIntegrationTest {
     }
 
     @Test
-    void explanationReflectsChangedAvailabilityWithoutOverwritingStoredScore() {
+    void explanationReflectsChangedAvailabilityAndUpdatesDraftScore() {
         String oldScore = schedule.getSolverScore();
         WeeklyAvailability window = availability.findByUserIdAndAvailabilityRole(
                 firstTeacher.getId(), AvailabilityRole.TEACHER).get(0);
         window.setStartTime(LocalTime.of(17, 30));
         availability.save(window);
-        assertThat(HardSoftScore.parseScore(solverService.getScoreExplanation(schedule.getId()).totalScore())
-                .hardScore()).isNegative();
-        assertThat(schedule.getSolverScore()).isEqualTo(oldScore);
+        String currentScore = solverService.getScoreExplanation(schedule.getId()).totalScore();
+        assertThat(HardSoftScore.parseScore(currentScore).hardScore()).isNegative();
+        assertThat(schedule.getSolverScore()).isEqualTo(currentScore).isNotEqualTo(oldScore);
     }
 
     private Long addConflictingLesson() {

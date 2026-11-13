@@ -80,6 +80,29 @@ class SolverIntegrationTest {
         assertThat(result.getScore().hardScore()).isNegative();
     }
 
+    @Test
+    void solverLeavesPrivateTemplateUnassignedWhenOnlySlotIsOccupiedByGroup() {
+        DanceSchedule fixture = buildRealisticProblem();
+        Lesson group = fixture.getLessonList().get(0);
+        Lesson template = fixture.getLessonList().get(5);
+        Student subscribed = template.getTeacher().getPrivateStudents().iterator().next();
+        List<WeeklyAvailability> windows = new ArrayList<>(fixture.getWeeklyAvailabilityList());
+        windows.add(new WeeklyAvailability(1000L, subscribed, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(10, 0), AvailabilityRole.STUDENT));
+        DanceSchedule problem = new DanceSchedule(9L, List.of(group.getTimeslot()),
+                fixture.getTeacherList(), List.of(), windows,
+                fixture.getScheduleDateAnchorList(), fixture.getStudentList(), List.of(group, template));
+        SolverConfig config = new SolverConfig()
+                .withSolutionClass(DanceSchedule.class)
+                .withEntityClasses(Lesson.class)
+                .withConstraintProviderClass(DanceScheduleConstraintProvider.class);
+        SolverSettingsValues settings = new SolverSettingsValues(
+                5, 50, 6, 15, 50, 1, 1, 1, 1, 100, 10, 50, 30, 1, 1);
+        DanceSchedule result = new SolverRuntimeFactory(config).create(settings).buildSolver().solve(problem);
+        assertThat(result.getScore().hardScore()).isZero();
+        assertThat(result.getLessonList().get(1).getStudent()).isNull();
+    }
+
     @BeforeAll
     static void buildDatasetAndSolve() {
         solverFactory = buildSolverFactory();
@@ -248,7 +271,7 @@ class SolverIntegrationTest {
                 .collect(Collectors.toSet());
 
         List<Lesson> conflicts = solvedSchedule.getLessonList().stream()
-                .filter(l -> l.isPrivate() && l.getTimeslot() != null)
+                .filter(l -> l.isPrivate() && l.getStudent() != null && l.getTimeslot() != null)
                 .filter(l -> groupTimeslots.stream().anyMatch(groupSlot -> overlaps(groupSlot, l.getTimeslot())))
                 .toList();
 
@@ -266,7 +289,7 @@ class SolverIntegrationTest {
     @DisplayName("🏠 T7: Room capacity respected — at most 4 private lessons per timeslot")
     void solver_respectsRoomCapacity_maxFourPrivatePerTimeslot() {
         Map<Timeslot, Long> privatePerTimeslot = solvedSchedule.getLessonList().stream()
-                .filter(l -> l.isPrivate() && l.getTimeslot() != null)
+                .filter(l -> l.isPrivate() && l.getStudent() != null && l.getTimeslot() != null)
                 .collect(Collectors.groupingBy(Lesson::getTimeslot, Collectors.counting()));
 
         privatePerTimeslot.forEach((timeslot, count) ->
@@ -293,6 +316,7 @@ class SolverIntegrationTest {
         naiveProblem.getLessonList().forEach(lesson -> {
             if (!lesson.isPinned()) {
                 lesson.setTimeslot(firstTimeslot);
+                lesson.setStudent(lesson.getTeacher().getPrivateStudents().iterator().next());
             }
         });
 
@@ -619,4 +643,3 @@ class SolverIntegrationTest {
                         e.getKey(), e.getValue()));
     }
 }
-

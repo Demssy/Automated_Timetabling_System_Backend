@@ -941,10 +941,50 @@ class DanceScheduleConstraintProviderTest {
         Timeslot timeslot = createTimeslot(1L, DayOfWeek.MONDAY, "09:00", "10:00");
 
         Lesson lesson = createLesson(1L, teacher, null, timeslot, true, false);
+        lesson.setStudent(null);
 
         constraintVerifier.verifyThat(DanceScheduleConstraintProvider::rewardStudentAssignment)
             .given(lesson)
             .rewardsWith(0);
+    }
+
+    @Test
+    void unassignedPrivateTemplateDoesNotOccupyTeacherOrGroupRoom() {
+        Teacher teacher = createTeacher(1L, "Teacher");
+        Timeslot slot = createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00");
+        Lesson group = createLesson(1L, teacher, createDanceGroup(1L, "Group"), slot, false, true);
+        Lesson template = createLesson(2L, teacher, null, slot, true, false);
+        template.setStudent(null);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::privateLessonIncompleteAssignment)
+                .given(template).penalizesBy(0);
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::noPrivateDuringGroupLesson)
+                .given(group, template).penalizesBy(0);
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherConflict)
+                .given(group, template).penalizesBy(0);
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherOutsideWeeklyAvailability)
+                .given(template).penalizesBy(0);
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::rewardPrimeTime)
+                .given(template).rewardsWith(0);
+    }
+
+    @Test
+    void unassignedPrivateTemplateIsPenalizedSoftly() {
+        Teacher teacher = createTeacher(1L, "Teacher");
+        Timeslot slot = createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00");
+        Lesson template = createLesson(1L, teacher, null, slot, true, false);
+        template.setStudent(null);
+        Lesson assigned = createLesson(2L, teacher, null, slot, true, false);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::unassignedPrivateTemplate)
+                .given(template, assigned).penalizesBy(1);
+    }
+
+    @Test
+    void studentWithoutTimeslotStillViolatesAssignmentIntegrity() {
+        Lesson lesson = createLesson(1L, createTeacher(1L, "Teacher"), null, null, true, false);
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::privateLessonIncompleteAssignment)
+                .given(lesson).penalizesBy(1);
     }
 
     @Test
@@ -1008,6 +1048,9 @@ class DanceScheduleConstraintProviderTest {
         lesson.setDurationMinutes(60);
         lesson.setPrivate(isPrivate);
         lesson.setPinned(isPinned);
+        if (isPrivate) {
+            lesson.setStudent(createStudent(id + 1000, "Student " + id));
+        }
         return lesson;
     }
 

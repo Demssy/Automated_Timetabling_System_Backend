@@ -98,7 +98,7 @@ class SolverSettingsIntegrationTest {
         mvc.perform(get("/api/v1/solver/settings"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.maxAllowedHardPenalty").value(0))
-                .andExpect(jsonPath("$.defaults.primeTimeLessonReward").value(10));
+                .andExpect(jsonPath("$.defaults.primeTimeLessonReward").value(15));
 
         String body = objectMapper.writeValueAsString(new SolverSettingsPresetRequest("Competition", values));
         String response = mvc.perform(post("/api/v1/solver/settings/presets")
@@ -189,20 +189,16 @@ class SolverSettingsIntegrationTest {
         assertThat(evaluator.recalculate(schedule.getId()).hardScore()).isEqualTo(-10);
         assertThatThrownBy(() -> metadataService.publish(schedule.getId()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("-10hard")
-                .hasMessageContaining("-5hard");
+                .hasMessageContaining("Room conflict");
     }
 
     @Test
-    void thresholdAllowsPublishingWhenScoreIsWithinLimit() {
+    void thresholdDoesNotAllowPublishingOverlappingGroups() {
         ScheduleMetadata schedule = overlappingGroups();
         settingsService.update(values(1, 5));
-        assertThat(metadataService.publish(schedule.getId()).status()).isEqualTo(ScheduleStatus.PUBLISHED);
-        assertThat(schedules.findById(schedule.getId()).orElseThrow().getSolverScore()).contains("-1hard");
-        settingsService.update(values(10, 5));
-        assertThat(schedules.findById(schedule.getId()).orElseThrow().getSolverScore()).contains("-1hard");
-        assertThat(evaluator.explain(schedule.getId()).totalScore()).contains("-10hard");
-        assertThat(schedules.findById(schedule.getId()).orElseThrow().getSolverScore()).contains("-1hard");
+        assertThatThrownBy(() -> metadataService.publish(schedule.getId()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Room conflict");
     }
 
     @Test

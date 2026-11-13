@@ -39,9 +39,18 @@ public class SolverSettingsService implements ApplicationRunner {
         this.mapper = mapper;
         this.defaults = new SolverSettingsValues(
                 Math.toIntExact(spentLimit.toSeconds()), 0, weights.getMaxTeacherLessonsPerDay(),
-                Math.toIntExact(weights.getTeacherGapThresholdMinutes()), 1, 1, 1, 1, 1,
-                weights.getRewardStudentAssignment(), weights.getRewardPrimeTime(),
-                weights.getPenaltyStudentUnderDesiredLessons(), weights.getPenaltyTeacherUnderDesiredLessons(), 1, 1);
+                Math.toIntExact(weights.getTeacherGapThresholdMinutes()),
+                weights.getPhysicalConflictHardWeight(),
+                weights.getWeeklyAvailabilityHardWeight(),
+                weights.getTeacherDailyLimitHardWeight(),
+                weights.getStudentMultipleDailyPrivateHardWeight(),
+                weights.getWeeklyQuotaOverflowHardWeight(),
+                weights.getRewardStudentAssignment(),
+                weights.getRewardPrimeTime(),
+                weights.getPenaltyStudentUnderDesiredLessons(),
+                weights.getPenaltyTeacherUnderDesiredLessons(),
+                weights.getTeacherGapPenaltyMultiplier(),
+                weights.getTeacherWorkloadFairnessMultiplier());
         var violations = validator.validate(defaults);
         if (!violations.isEmpty()) {
             String errors = violations.stream()

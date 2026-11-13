@@ -171,6 +171,27 @@ class SolverConstraintEdgeCaseTest {
     }
 
     @Test
+    void partiallyOverlappingPrivateLessonsCannotShareTeacherOrStudent() {
+        Teacher sharedTeacher = teacher(1L, "Teacher");
+        Student sharedStudent = student(10L, "Student");
+        Lesson first = privateLessonWithStudent(1L, sharedTeacher,
+                timeslot(1L, DayOfWeek.MONDAY, "10:00", "11:00"), sharedStudent);
+        Lesson second = privateLessonWithStudent(2L, sharedTeacher,
+                timeslot(2L, DayOfWeek.MONDAY, "10:30", "11:30"), sharedStudent);
+
+        verifier.verifyThat(DanceScheduleConstraintProvider::teacherConflict)
+                .given(first, second).penalizesBy(1);
+        verifier.verifyThat(DanceScheduleConstraintProvider::studentConflict)
+                .given(first, second).penalizesBy(1);
+
+        second.setTimeslot(timeslot(3L, DayOfWeek.MONDAY, "11:00", "12:00"));
+        verifier.verifyThat(DanceScheduleConstraintProvider::teacherConflict)
+                .given(first, second).penalizesBy(0);
+        verifier.verifyThat(DanceScheduleConstraintProvider::studentConflict)
+                .given(first, second).penalizesBy(0);
+    }
+
+    @Test
     void capacityCountsSimultaneousLessonsRatherThanOverlapChain() {
         Timeslot middle = timeslot(1L, DayOfWeek.MONDAY, "10:00", "12:00");
         Timeslot early = timeslot(2L, DayOfWeek.MONDAY, "10:00", "11:00");
@@ -186,6 +207,22 @@ class SolverConstraintEdgeCaseTest {
         Lesson f = privateLesson(7L, teacher(7L, "T7"), late);
         verifier.verifyThat(DanceScheduleConstraintProvider::maxFourPrivateLessonsPerTimeslot)
                 .given(anchor, a, b, c, d, e, f).penalizesBy(1);
+    }
+
+    @Test
+    void unmatchedTemplateDoesNotUseCapacityButAssignedPartialOverlapDoes() {
+        Lesson[] lessons = new Lesson[5];
+        for (int i = 0; i < lessons.length; i++) {
+            long id = i + 1L;
+            lessons[i] = privateLesson(id, teacher(id, "T" + id),
+                    timeslot(id, DayOfWeek.MONDAY, i == 4 ? "10:30" : "10:00", "11:00"));
+        }
+        lessons[4].setStudent(null);
+        verifier.verifyThat(DanceScheduleConstraintProvider::maxFourPrivateLessonsPerTimeslot)
+                .given((Object[]) lessons).penalizesBy(0);
+        lessons[4].setStudent(student(1005L, "Assigned"));
+        verifier.verifyThat(DanceScheduleConstraintProvider::maxFourPrivateLessonsPerTimeslot)
+                .given((Object[]) lessons).penalizesBy(1);
     }
 
     @Test
@@ -697,6 +734,7 @@ class SolverConstraintEdgeCaseTest {
         lesson.setDurationMinutes(60);
         lesson.setPrivate(true);
         lesson.setPinned(false);
+        lesson.setStudent(student(id + 1000, "Student " + id));
         return lesson;
     }
 

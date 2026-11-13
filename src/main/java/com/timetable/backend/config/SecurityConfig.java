@@ -1,9 +1,11 @@
 package com.timetable.backend.config;
 
 import com.timetable.backend.security.JwtAuthenticationFilter;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -16,14 +18,12 @@ import org.springframework.security.config.annotation.web.configurers.HeadersCon
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
-
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.http.HttpMethod;
 
 import java.util.List;
 
@@ -38,22 +38,31 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .cors(Customizer.withDefaults())
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/dictionaries/dance-styles").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/dictionaries/styles").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/dance-styles").permitAll()
-                .requestMatchers("/h2-console/**").permitAll()
-                .anyRequest().authenticated()
-            )
-            .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .cors(Customizer.withDefaults())
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            // Return 401 instead of default 403 when JWT is missing or expired
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write(
+                                    "{\"error\":\"UNAUTHORIZED\",\"message\":\"Session expired. Please log in again.\"}"
+                            );
+                        })
+                )
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/dictionaries/dance-styles").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/dictionaries/styles").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/dance-styles").permitAll()
+                        .requestMatchers("/h2-console/**").permitAll()
+                        .anyRequest().authenticated()
+                )
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         http.csrf(AbstractHttpConfigurer::disable);
         // for H2 console (frame) - allow same-origin framing instead of disabling protection globally
         http.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin));
-
 
         return http.build();
     }
@@ -83,7 +92,6 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(List.of("*"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of("Authorization", "Cache-Control", "Content-Type", "Cookie"));
-
 
         configuration.setAllowCredentials(true);
 

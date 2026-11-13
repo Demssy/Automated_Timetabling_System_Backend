@@ -8,6 +8,7 @@ import com.timetable.backend.domain.model.ScheduleStatus;
 import com.timetable.backend.domain.repository.ScheduleMetadataRepository;
 import com.timetable.backend.domain.repository.ScheduledLessonRepository;
 import com.timetable.backend.solver.DanceSchedule;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,8 @@ class SolutionPersistenceServiceTest {
     private ScheduleMetadataRepository scheduleMetadataRepository;
     @Mock
     private ScheduleScoreEvaluationService scoreEvaluationService;
+    @Mock
+    private EntityManager entityManager;
 
     private SolutionPersistenceService service;
     private ScheduleMetadata schedule;
@@ -40,7 +43,7 @@ class SolutionPersistenceServiceTest {
     @BeforeEach
     void setUp() {
         service = new SolutionPersistenceService(scheduledLessonRepository, scheduleMetadataRepository,
-                scoreEvaluationService);
+                scoreEvaluationService, entityManager);
         schedule = new ScheduleMetadata();
         schedule.setId(1L);
         schedule.setStatus(ScheduleStatus.DRAFT);
@@ -61,16 +64,16 @@ class SolutionPersistenceServiceTest {
         unmatched.setId(10L);
         unmatched.setPrivate(true);
         service.saveSolution(solution(List.of(unmatched)), 0);
-        verify(scheduledLessonRepository, never()).deleteAll(any());
-        verify(scheduledLessonRepository).saveAll(List.of());
+        verify(scheduledLessonRepository, never()).deleteAllInBatch(any());
+        verify(scheduledLessonRepository).saveAllAndFlush(List.of());
         verify(scoreEvaluationService).recalculate(1L);
     }
 
     @Test
     void retainsCancelledSnapshotMissingFromSolverOutput() {
         service.saveSolution(solution(List.of()), 0);
-        verify(scheduledLessonRepository, never()).deleteAll(any());
-        verify(scheduledLessonRepository).saveAll(List.of());
+        verify(scheduledLessonRepository, never()).deleteAllInBatch(any());
+        verify(scheduledLessonRepository).saveAllAndFlush(List.of());
         verify(scoreEvaluationService).recalculate(1L);
     }
 

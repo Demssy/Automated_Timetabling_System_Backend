@@ -24,11 +24,14 @@ import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.TimeslotRepository;
 import com.timetable.backend.domain.repository.WeeklyAvailabilityRepository;
 import com.timetable.backend.solver.DanceSchedule;
+import com.timetable.backend.solver.DanceScheduleConstraintProvider;
 import com.timetable.backend.solver.SolverRuntimeFactory;
 import com.timetable.backend.domain.dto.SolverSettingsValues;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -36,6 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -188,6 +192,29 @@ class ScheduleScoreEvaluationServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("teach and attend");
         verify(schedules, never()).save(any());
+    }
+
+    static Stream<String> mandatoryConstraints() {
+        return DanceScheduleConstraintProvider.MANDATORY_CONSTRAINTS.stream()
+                .filter(name -> !name.equals(DanceScheduleConstraintProvider.TEACHER_STUDENT_CONFLICT));
+    }
+
+    @ParameterizedTest
+    @MethodSource("mandatoryConstraints")
+    void mandatoryConflictCannotBePublishedEvenWhenThresholdAllowsIt(String constraint) {
+        Lesson source = new Lesson();
+        source.setTeacher(new Teacher());
+        ScheduledLesson row = snapshot(1L);
+        row.setLesson(source);
+        when(snapshots.findByScheduleIdOrderByIdAsc(1L)).thenReturn(List.of(row));
+        when(settingsService.current()).thenReturn(new SolverSettingsValues(
+                10, 50, 6, 15, 1, 1, 1, 1, 1, 100, 10, 50, 30, 1, 1));
+        when(constraintTotal.getScore()).thenReturn(HardSoftScore.ofHard(-1));
+        when(constraintTotal.getConstraintRef()).thenReturn(ConstraintRef.of("test", constraint));
+        when(explanation.getConstraintMatchTotalMap()).thenReturn(Map.of("mandatory", constraintTotal));
+        when(explanation.getScore()).thenReturn(HardSoftScore.ofHard(-1));
+        assertThatThrownBy(() -> service.validateAndRecalculate(1L, true))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining(constraint);
     }
 
     @Test

@@ -27,6 +27,7 @@ import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.TimeslotRepository;
 import com.timetable.backend.domain.repository.WeeklyAvailabilityRepository;
 import com.timetable.backend.solver.DanceSchedule;
+import com.timetable.backend.solver.DanceScheduleConstraintProvider;
 import com.timetable.backend.solver.SolverRuntimeFactory;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -86,7 +87,7 @@ public class ScheduleScoreEvaluationService {
     private ScoreExplanationResponse storeEvaluation(ScheduleMetadata schedule, SolverSettingsValues settings) {
         ScoreExplanationResponse result = evaluate(schedule, settings);
         if (result.violations().stream().anyMatch(violation ->
-                violation.constraintName().equals("Teacher attends another lesson as student at the same time")
+                violation.constraintName().equals(DanceScheduleConstraintProvider.TEACHER_STUDENT_CONFLICT)
                         && violation.hardScore() < 0)) {
             throw new ScheduleConflictException("A teacher cannot teach and attend another lesson at the same time");
         }
@@ -126,6 +127,15 @@ public class ScheduleScoreEvaluationService {
         }
         SolverSettingsValues settings = settingsService.current();
         ScoreExplanationResponse result = storeEvaluation(loadSchedule(scheduleId), settings);
+        List<String> mandatoryViolations = result.violations().stream()
+                .filter(violation -> violation.hardScore() < 0
+                        && DanceScheduleConstraintProvider.MANDATORY_CONSTRAINTS.contains(violation.constraintName()))
+                .map(ConstraintViolationSummary::constraintName)
+                .toList();
+        if (!mandatoryViolations.isEmpty()) {
+            throw new ScheduleConflictException("Cannot publish schedule with mandatory hard constraint violations: "
+                    + String.join(", ", mandatoryViolations));
+        }
         HardSoftScore score = HardSoftScore.parseScore(result.totalScore());
         if (score.initScore() != 0 || score.hardScore() < -(long) settings.maxAllowedHardPenalty()) {
             throw new ScheduleConflictException(

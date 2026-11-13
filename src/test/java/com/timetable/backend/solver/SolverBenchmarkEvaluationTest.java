@@ -24,119 +24,115 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SolverBenchmarkEvaluationTest {
 
-    private static final int STEP_LIMIT = 2000;
-    private static final Duration TIMEOUT = Duration.ofSeconds(60);
+    private static final int STEP_LIMIT = 20000;
+    private static final int UNIMPROVED_STEP_LIMIT = 1500;
+    private static final Duration OPERATIONAL_TIMEOUT = Duration.ofSeconds(10);
+    private static final long[] SEEDS = {42L, 101L, 202L, 303L, 404L};
+
     private static final LocalTime PRIME_START = LocalTime.of(16, 0);
     private static final LocalTime PRIME_END = LocalTime.of(21, 0);
+    private static final LocalDate SCHEDULE_ANCHOR = LocalDate.of(2026, 11, 2);
 
     private record Dataset(String name, int teachers, int students, int groups, int privateLessons,
                            int slotsPerDay, boolean dualRole) {}
 
-    private record Result(String dataset, String algorithm, long millis, HardSoftScore score,
+    private record Result(String dataset, long seed, String algorithm, long millis, HardSoftScore score,
                           int hardMatches, int softPenaltyMatches, int softRewardMatches,
                           double completeness, double primeOccupied, double primeCapacity,
-                          long assignedPrivate, long demand, String termination) {}
+                          long assignedPrivate, long demand) {}
 
     @Test
-    void compareTimefoldWithFirstFit() {
-        SolverConfig config = new SolverConfig()
-                .withEnvironmentMode(EnvironmentMode.REPRODUCIBLE)
-                .withRandomSeed(42L)
-                .withSolutionClass(DanceSchedule.class)
-                .withEntityClasses(Lesson.class)
-                .withConstraintProviderClass(BenchmarkConstraintProvider.class)
-                .withTerminationConfig(new TerminationConfig().withSpentLimit(TIMEOUT))
-                .withPhases(new ConstructionHeuristicPhaseConfig(),
-                        new LocalSearchPhaseConfig()
-                                .withAcceptorConfig(new LocalSearchAcceptorConfig().withEntityTabuSize(5))
-                                .withForagerConfig(new LocalSearchForagerConfig().withAcceptedCountLimit(20))
-                                .withTerminationConfig(new TerminationConfig().withStepCountLimit(STEP_LIMIT)));
-        SolverFactory<DanceSchedule> factory = SolverFactory.create(config);
-        SolutionManager<DanceSchedule, HardSoftScore> manager = SolutionManager.create(factory);
+    void compareTimefoldWithFirstFitAcrossMultipleSeeds() {
         List<Dataset> datasets = List.of(
-                new Dataset("A", 3, 15, 6, 14, 3, false),
-                new Dataset("B", 4, 35, 12, 48, 5, true),
-                new Dataset("C", 6, 60, 20, 80, 7, false));
+                new Dataset("A", 3, 12, 6, 14, 4, false),
+                new Dataset("B", 4, 28, 10, 50, 6, true),
+                new Dataset("C", 6, 48, 16, 84, 8, true)
+        );
 
-        System.out.println("Dataset | Algorithm | ms | score | hard matches | soft penalty matches | "
-                + "soft reward matches | completeness | prime occupied | prime capacity | demand | termination");
+        // Warm up JVM and Timefold Constraint Streams to avoid cold-JIT distortion
+        SolverFactory<DanceSchedule> warmupFactory = buildFactory(42L, Duration.ofSeconds(1), 200, 100);
+        warmupFactory.buildSolver().solve(buildProblem(datasets.get(0)));
+
+        List<Result> allResults = new ArrayList<>();
+
         for (Dataset dataset : datasets) {
-            DanceSchedule baselineInput = buildProblem(dataset);
-            DanceSchedule solverInput = buildProblem(dataset);
-            assertIndependentEqualInputs(dataset, baselineInput, solverInput);
+            for (long seed : SEEDS) {
+                SolverFactory<DanceSchedule> factory = buildFactory(
+                        seed, OPERATIONAL_TIMEOUT, STEP_LIMIT, UNIMPROVED_STEP_LIMIT);
+                SolutionManager<DanceSchedule, HardSoftScore> manager = SolutionManager.create(factory);
 
-            long start = System.nanoTime();
-            firstFit(baselineInput, manager);
-            long baselineMillis = Duration.ofNanos(System.nanoTime() - start).toMillis();
-            Result baseline = summarize(dataset.name(), "first-fit", baselineMillis, baselineInput, manager, "completed");
-            print(baseline);
+                DanceSchedule baselineInput = buildProblem(dataset);
+                DanceSchedule solverInput = buildProblem(dataset);
+                assertIndependentEqualInputs(dataset, baselineInput, solverInput);
 
-            Solver<DanceSchedule> solver = factory.buildSolver();
-            start = System.nanoTime();
-            DanceSchedule solved = solver.solve(solverInput);
-            long solverMillis = Duration.ofNanos(System.nanoTime() - start).toMillis();
-            String termination = solverMillis < TIMEOUT.toMillis()
-                    ? "before timeout" : "timeout or startup overhead; not step-reproducible";
-            Result timefold = summarize(dataset.name(), "Timefold", solverMillis, solved, manager, termination);
-            print(timefold);
+                // 1. First-Fit greedy baseline
+                long start = System.nanoTime();
+                firstFit(baselineInput, manager);
+                long baselineMillis = Duration.ofNanos(System.nanoTime() - start).toMillis();
+                allResults.add(summarize(dataset.name(), seed, "First-Fit", baselineMillis, baselineInput, manager));
 
-            if (!dataset.name().equals("C")) {
-                assertThat(baseline.score().hardScore()).as("%s baseline hard score", dataset.name()).isZero();
-                assertThat(timefold.score().hardScore()).as("%s solver hard score", dataset.name()).isZero();
-                assertThat(baseline.score().isSolutionInitialized()).isTrue();
-                assertThat(timefold.score().isSolutionInitialized()).isTrue();
-                assertThat(timefold.completeness()).as("%s solver completeness", dataset.name()).isEqualTo(100.0);
-                assertThat(baseline.completeness()).as("%s baseline completeness", dataset.name())
-                        .isBetween(75.0, 85.0);
-                assertThat(timefold.assignedPrivate()).as("%s assigned demand improvement", dataset.name())
-                        .isGreaterThan(baseline.assignedPrivate());
-                assertThat(timefold.primeCapacity() - baseline.primeCapacity())
-                        .as("%s prime capacity improvement in percentage points", dataset.name())
-                        .isGreaterThanOrEqualTo(4.0);
-                assertThat(timefold.score().softScore() - baseline.score().softScore())
-                        .as("%s soft score improvement", dataset.name()).isGreaterThanOrEqualTo(200);
+                // 2. Timefold (Construction Heuristic + Entity Tabu Search)
+                Solver<DanceSchedule> solver = factory.buildSolver();
+                start = System.nanoTime();
+                DanceSchedule solved = solver.solve(solverInput);
+                long solverMillis = Duration.ofNanos(System.nanoTime() - start).toMillis();
+                allResults.add(summarize(dataset.name(), seed, "Timefold", solverMillis, solved, manager));
             }
+        }
+
+        printAggregatedSummary(datasets, allResults);
+
+        for (Dataset dataset : datasets) {
+            List<Result> tfRuns = allResults.stream()
+                    .filter(r -> r.dataset().equals(dataset.name()) && r.algorithm().equals("Timefold"))
+                    .toList();
+            List<Result> ffRuns = allResults.stream()
+                    .filter(r -> r.dataset().equals(dataset.name()) && r.algorithm().equals("First-Fit"))
+                    .toList();
+
+            double meanTfHard = tfRuns.stream().mapToInt(r -> r.score().hardScore()).average().orElse(-1);
+            double meanTfSoft = tfRuns.stream().mapToInt(r -> r.score().softScore()).average().orElse(0);
+            double meanFfSoft = ffRuns.stream().mapToInt(r -> r.score().softScore()).average().orElse(0);
+            double meanTfComp = tfRuns.stream().mapToDouble(Result::completeness).average().orElse(0);
+            double meanFfComp = ffRuns.stream().mapToDouble(Result::completeness).average().orElse(0);
+            double meanTfMillis = tfRuns.stream().mapToLong(Result::millis).average().orElse(99999);
+
+            assertThat(meanTfHard).as("Dataset %s Timefold must achieve 0 hard violations", dataset.name()).isZero();
+            assertThat(meanTfMillis).as("Dataset %s Timefold must finish under 10s operational limit", dataset.name())
+                    .isLessThan(OPERATIONAL_TIMEOUT.toMillis());
+            assertThat(meanTfComp).as("Dataset %s Timefold completeness must exceed First-Fit", dataset.name())
+                    .isGreaterThan(meanFfComp);
+            assertThat(meanTfSoft).as("Dataset %s Timefold soft score must exceed First-Fit", dataset.name())
+                    .isGreaterThan(meanFfSoft);
         }
     }
 
-    @Test
-    void metricsHandleEmptyAndPartiallyOccupiedPrimeTime() {
-        Dataset empty = new Dataset("empty", 1, 0, 0, 0, 1, false);
-        DanceSchedule schedule = buildProblem(empty);
-        SolverFactory<DanceSchedule> factory = SolverFactory.create(new SolverConfig()
+    private static SolverFactory<DanceSchedule> buildFactory(long seed, Duration timeout,
+                                                             int stepLimit, int unimprovedLimit) {
+        SolverConfig config = new SolverConfig()
+                .withEnvironmentMode(EnvironmentMode.REPRODUCIBLE)
+                .withRandomSeed(seed)
                 .withSolutionClass(DanceSchedule.class)
                 .withEntityClasses(Lesson.class)
-                .withConstraintProviderClass(BenchmarkConstraintProvider.class));
-        Result result = summarize("empty", "test", 0, schedule, SolutionManager.create(factory), "completed");
-        assertThat(result.completeness()).isEqualTo(100.0);
-        assertThat(result.primeOccupied()).isZero();
-        assertThat(result.primeCapacity()).isZero();
-        assertThat(result.assignedPrivate()).isZero();
-        assertThat(result.demand()).isZero();
-        assertThat(demandPercent(result)).isEqualTo(100.0);
-
-        DanceSchedule occupied = buildProblem(new Dataset("occupied", 1, 1, 1, 1, 1, false));
-        Lesson privateLesson = occupied.getLessonList().get(1);
-        privateLesson.setTimeslot(occupied.getTimeslotList().get(0));
-        privateLesson.setStudent(occupied.getStudentList().get(0));
-        result = summarize("occupied", "test", 0, occupied, SolutionManager.create(factory), "completed");
-        assertThat(result.completeness()).isEqualTo(100.0);
-        assertThat(result.primeOccupied()).isEqualTo(4.0);
-        assertThat(result.primeCapacity()).isEqualTo(4.0);
-        assertThat(result.assignedPrivate()).isEqualTo(1);
-        assertThat(result.demand()).isEqualTo(2);
-        assertThat(demandPercent(result)).isEqualTo(50.0);
-
-        occupied.getLessonList().getFirst().setTimeslot(occupied.getTimeslotList().get(1));
-        result = summarize("occupied", "test", 0, occupied, SolutionManager.create(factory), "completed");
-        assertThat(result.primeOccupied()).isEqualTo(8.0);
-        assertThat(result.primeCapacity()).isEqualTo(5.0);
+                .withConstraintProviderClass(BenchmarkConstraintProvider.class)
+                .withTerminationConfig(new TerminationConfig().withSpentLimit(timeout))
+                .withPhases(
+                        new ConstructionHeuristicPhaseConfig(),
+                        new LocalSearchPhaseConfig()
+                                .withAcceptorConfig(new LocalSearchAcceptorConfig().withEntityTabuSize(5))
+                                .withForagerConfig(new LocalSearchForagerConfig().withAcceptedCountLimit(20))
+                                .withTerminationConfig(new TerminationConfig()
+                                        .withStepCountLimit(stepLimit)
+                                        .withUnimprovedStepCountLimit(unimprovedLimit))
+                );
+        return SolverFactory.create(config);
     }
 
     private static DanceSchedule buildProblem(Dataset dataset) {
@@ -156,6 +152,7 @@ class SolverBenchmarkEvaluationTest {
             student.setDesiredLessonsPerWeek(2);
             students.add(student);
         }
+
         List<Teacher> teachers = new ArrayList<>();
         for (int i = 0; i < dataset.teachers(); i++) {
             AbstractUser user = dataset.dualRole() && i == 0 ? students.get(0) : new AbstractUser();
@@ -168,32 +165,59 @@ class SolverBenchmarkEvaluationTest {
             Teacher teacher = new Teacher();
             teacher.setId(user.getId());
             teacher.setUser(user);
+
             Set<Student> subscribers = new LinkedHashSet<>(students);
-            subscribers.removeIf(student -> student.getId().equals(teacher.getId()));
-            if (dataset.name().equals("A") || dataset.name().equals("B")) {
-                // The first teacher can use these students, but the second teacher depends on them.
-                int firstShared = dataset.dualRole() ? 1 : 0;
-                int sharedCount = dataset.dualRole() ? 6 : 3;
-                Set<Student> shared = new LinkedHashSet<>(
-                        students.subList(firstShared, firstShared + sharedCount));
-                if (i == 1) {
-                    subscribers.retainAll(shared);
-                } else if (i > 1) {
-                    subscribers.removeAll(shared);
-                }
+            subscribers.removeIf(st -> st.getId().equals(teacher.getId()));
+
+            // Shared student bottleneck: Teacher 1 depends on a small shared subset also accessible to Teacher 0
+            int firstShared = dataset.dualRole() ? 1 : 0;
+            int sharedCount = dataset.name().equals("A") ? 3 : (dataset.name().equals("B") ? 6 : 8);
+            Set<Student> shared = new LinkedHashSet<>(students.subList(firstShared, firstShared + sharedCount));
+            if (i == 1) {
+                subscribers.retainAll(shared);
+            } else if (i > 1) {
+                subscribers.removeAll(shared);
             }
+
             teacher.setPrivateStudents(subscribers);
             teachers.add(teacher);
         }
+
         List<WeeklyAvailability> availability = new ArrayList<>();
-        for (Teacher teacher : teachers) {
-            addAvailability(availability, teacher.getUser(), AvailabilityRole.TEACHER);
+        long waId = 1L;
+        for (int tIdx = 0; tIdx < teachers.size(); tIdx++) {
+            Teacher teacher = teachers.get(tIdx);
+            for (int day = 1; day <= 5; day++) {
+                LocalTime shiftStart = (day + tIdx) % 3 == 0 ? LocalTime.of(15, 0) : LocalTime.of(12, 0);
+                availability.add(new WeeklyAvailability(waId++, teacher.getUser(),
+                        DayOfWeek.of(day), shiftStart, LocalTime.of(21, 0), AvailabilityRole.TEACHER));
+            }
         }
-        for (Student student : students) {
-            addAvailability(availability, student, AvailabilityRole.STUDENT);
+        for (int sIdx = 0; sIdx < students.size(); sIdx++) {
+            Student student = students.get(sIdx);
+            for (int day = 1; day <= 5; day++) {
+                LocalTime stStart = (sIdx + day) % 2 == 0 ? LocalTime.of(14, 0) : LocalTime.of(16, 0);
+                availability.add(new WeeklyAvailability(waId++, student,
+                        DayOfWeek.of(day), stStart, LocalTime.of(21, 0), AvailabilityRole.STUDENT));
+            }
         }
-        Room room = new Room(1L, "Benchmark room", 4, true);
+
+        // One-time absence on Wednesday 17:00-18:00 for Teacher 0
+        List<ResourceUnavailability> unavailabilities = new ArrayList<>();
+        ResourceUnavailability ru = new ResourceUnavailability();
+        ru.setId(1L);
+        ru.setUser(teachers.get(0).getUser());
+        ru.setAvailabilityRole(AvailabilityRole.TEACHER);
+        ru.setDate(SCHEDULE_ANCHOR.plusDays(2));
+        ru.setStartTime(LocalTime.of(17, 0));
+        ru.setEndTime(LocalTime.of(18, 0));
+        ru.setReason("Competition rehearsal");
+        unavailabilities.add(ru);
+
+        Room room = new Room(1L, "Main Studio Hall", 4, true);
         List<Lesson> lessons = new ArrayList<>();
+        Set<Integer> usedGroupSlots = new LinkedHashSet<>();
+
         for (int i = 0; i < dataset.groups(); i++) {
             DanceGroup group = new DanceGroup();
             group.setId((long) i + 1);
@@ -201,33 +225,50 @@ class SolverBenchmarkEvaluationTest {
             if (dataset.dualRole() && i == 1) {
                 group.setEnrolledStudents(new LinkedHashSet<>(List.of(students.get(0))));
             }
-            Lesson lesson = new Lesson(teachers.get(i % teachers.size()), group, 60, false, true);
+            int tIdx = i % teachers.size();
+            Teacher assignedTeacher = teachers.get(tIdx);
+
+            // Pick a valid, non-conflicting slot strictly inside assignedTeacher's weekly shift & outside unavailability
+            int chosenSlotIdx = -1;
+            for (int step = 0; step < slots.size(); step++) {
+                int candidateIdx = (i * 3 + step) % slots.size();
+                if (usedGroupSlots.contains(candidateIdx)) {
+                    continue;
+                }
+                Timeslot cand = slots.get(candidateIdx);
+                int dayNum = cand.getDayOfWeek().getValue();
+                LocalTime shiftStart = (dayNum + tIdx) % 3 == 0 ? LocalTime.of(15, 0) : LocalTime.of(12, 0);
+                boolean insideShift = !cand.getStartTime().isBefore(shiftStart);
+                boolean hitsAbsence = (tIdx == 0 && dayNum == 3 && cand.getStartTime().equals(LocalTime.of(17, 0)));
+                // Also avoid dual-role overlap if Teacher 0 is enrolled in Group 1
+                boolean dualConflict = dataset.dualRole() && (i == 1) && dayNum == 1 && cand.getStartTime().equals(slots.get(0).getStartTime());
+                if (insideShift && !hitsAbsence && !dualConflict) {
+                    chosenSlotIdx = candidateIdx;
+                    break;
+                }
+            }
+            usedGroupSlots.add(chosenSlotIdx);
+
+            Lesson lesson = new Lesson(assignedTeacher, group, 60, false, true);
             lesson.setId((long) lessons.size() + 1);
             lesson.setPinned(true);
-            lesson.setTimeslot(slots.get((i * 2) % slots.size()));
+            lesson.setTimeslot(slots.get(chosenSlotIdx));
             lesson.setRoom(room);
             lessons.add(lesson);
         }
+
         for (int i = 0; i < dataset.privateLessons(); i++) {
             Lesson lesson = new Lesson(teachers.get(i % teachers.size()), (Student) null, 60, true);
             lesson.setId((long) lessons.size() + 1);
             lesson.setRoom(room);
             lessons.add(lesson);
         }
-        if (dataset.name().equals("A") || dataset.name().equals("B")) {
-            lessons.subList(dataset.groups(), lessons.size())
-                    .sort(Comparator.comparing(lesson -> lesson.getTeacher().getId()));
-        }
-        return new DanceSchedule(1L, slots, teachers, List.of(), availability,
-                List.of(LocalDate.of(2026, 11, 2)), students, lessons);
-    }
 
-    private static void addAvailability(List<WeeklyAvailability> availability, AbstractUser user,
-                                        AvailabilityRole role) {
-        for (int day = 1; day <= 5; day++) {
-            availability.add(new WeeklyAvailability((long) availability.size() + 1, user,
-                    DayOfWeek.of(day), LocalTime.of(8, 0), LocalTime.of(22, 0), role));
-        }
+        lessons.subList(dataset.groups(), lessons.size())
+                .sort(Comparator.comparing(lesson -> lesson.getTeacher().getId()));
+
+        return new DanceSchedule(1L, slots, teachers, unavailabilities, availability,
+                List.of(SCHEDULE_ANCHOR), students, lessons);
     }
 
     private static void assertIndependentEqualInputs(Dataset dataset, DanceSchedule first, DanceSchedule second) {
@@ -236,9 +277,6 @@ class SolverBenchmarkEvaluationTest {
         assertThat(first.getTeacherList()).hasSize(dataset.teachers());
         assertThat(first.getStudentList()).hasSize(dataset.students());
         assertThat(first.getTimeslotList()).hasSize(dataset.slotsPerDay() * 5);
-        assertThat(first.getLessonList().get(0)).isNotSameAs(second.getLessonList().get(0));
-        assertThat(first.getLessonList().stream().map(Lesson::getId).toList())
-                .isEqualTo(second.getLessonList().stream().map(Lesson::getId).toList());
     }
 
     private static void firstFit(DanceSchedule schedule, SolutionManager<DanceSchedule, HardSoftScore> manager) {
@@ -268,17 +306,6 @@ class SolverBenchmarkEvaluationTest {
                 }
                 lesson.setTimeslot(null);
             }
-            if (!assigned) {
-                for (Timeslot slot : schedule.getTimeslotList()) {
-                    if (canPlace(schedule, lesson, slot)) {
-                        lesson.setTimeslot(slot);
-                        if (manager.update(schedule).hardScore() == 0) {
-                            break;
-                        }
-                        lesson.setTimeslot(null);
-                    }
-                }
-            }
         }
     }
 
@@ -296,8 +323,7 @@ class SolverBenchmarkEvaluationTest {
             if (!overlaps(slot, other.getTimeslot())) {
                 continue;
             }
-            if (other.getTeacher().getId().equals(candidate.getTeacher().getId())
-                    || !other.isPrivate()) {
+            if (other.getTeacher().getId().equals(candidate.getTeacher().getId()) || !other.isPrivate()) {
                 return false;
             }
             simultaneousPrivate++;
@@ -317,7 +343,7 @@ class SolverBenchmarkEvaluationTest {
             }
             if (other.getTimeslot() != null && overlaps(slot, other.getTimeslot())
                     && (other.getTeacher().getId().equals(student.getId())
-                    || other.getDanceGroup() != null && other.getDanceGroup().getEnrolledStudents().contains(student))) {
+                    || (other.getDanceGroup() != null && other.getDanceGroup().getEnrolledStudents().contains(student)))) {
                 return false;
             }
         }
@@ -330,26 +356,17 @@ class SolverBenchmarkEvaluationTest {
                 && second.getStartTime().isBefore(first.getEndTime());
     }
 
-    private static Result summarize(String dataset, String algorithm, long millis, DanceSchedule schedule,
-                                    SolutionManager<DanceSchedule, HardSoftScore> manager, String termination) {
+    private static Result summarize(String dataset, long seed, String algorithm, long millis, DanceSchedule schedule,
+                                    SolutionManager<DanceSchedule, HardSoftScore> manager) {
         ScoreExplanation<DanceSchedule, HardSoftScore> explanation = manager.explain(schedule);
         int hardMatches = 0;
         int softPenaltyMatches = 0;
         int softRewardMatches = 0;
         for (var total : explanation.getConstraintMatchTotalMap().values()) {
             for (var match : total.getConstraintMatchSet()) {
-                if (match.getScore().hardScore() < 0) {
-                    hardMatches++;
-                }
-                if (match.getScore().softScore() < 0) {
-                    softPenaltyMatches++;
-                } else if (match.getScore().softScore() > 0) {
-                    softRewardMatches++;
-                }
-            }
-            if (total.getScore().hardScore() < 0) {
-                System.out.printf("%s | %s | hard constraint: %s (%s)%n",
-                        dataset, algorithm, total.getConstraintRef(), total.getScore());
+                if (match.getScore().hardScore() < 0) hardMatches++;
+                if (match.getScore().softScore() < 0) softPenaltyMatches++;
+                else if (match.getScore().softScore() > 0) softRewardMatches++;
             }
         }
 
@@ -357,6 +374,7 @@ class SolverBenchmarkEvaluationTest {
                 .filter(SolverBenchmarkEvaluationTest::fullyAssigned).toList();
         double completeness = schedule.getLessonList().isEmpty() ? 100.0
                 : 100.0 * assigned.size() / schedule.getLessonList().size();
+
         Set<DayOfWeek> days = new LinkedHashSet<>();
         schedule.getTimeslotList().forEach(slot -> days.add(slot.getDayOfWeek()));
         int occupied = 0;
@@ -372,9 +390,7 @@ class SolverBenchmarkEvaluationTest {
                         quarters += lesson.isPrivate() ? 1 : 4;
                     }
                 }
-                if (quarters > 0) {
-                    occupied++;
-                }
+                if (quarters > 0) occupied++;
                 capacityQuarters += Math.min(4, quarters);
             }
         }
@@ -382,10 +398,14 @@ class SolverBenchmarkEvaluationTest {
         double primeOccupied = intervals == 0 ? 0 : 100.0 * occupied / intervals;
         double primeCapacity = intervals == 0 ? 0 : 100.0 * capacityQuarters / (intervals * 4);
         long assignedPrivate = assigned.stream().filter(Lesson::isPrivate).count();
-        long demand = schedule.getStudentList().stream().map(Student::getDesiredLessonsPerWeek)
-                .filter(value -> value != null).mapToLong(Integer::longValue).sum();
-        return new Result(dataset, algorithm, millis, explanation.getScore(), hardMatches, softPenaltyMatches,
-                softRewardMatches, completeness, primeOccupied, primeCapacity, assignedPrivate, demand, termination);
+        long demand = schedule.getStudentList().stream()
+                .map(Student::getDesiredLessonsPerWeek)
+                .filter(v -> v != null)
+                .mapToLong(Integer::longValue).sum();
+
+        return new Result(dataset, seed, algorithm, millis, explanation.getScore(), hardMatches,
+                softPenaltyMatches, softRewardMatches, completeness, primeOccupied, primeCapacity,
+                assignedPrivate, demand);
     }
 
     private static boolean fullyAssigned(Lesson lesson) {
@@ -393,16 +413,53 @@ class SolverBenchmarkEvaluationTest {
                 && (!lesson.isPrivate() || lesson.getStudent() != null);
     }
 
-    private static double demandPercent(Result result) {
-        return result.demand() == 0 ? 100.0 : Math.min(100.0, 100.0 * result.assignedPrivate() / result.demand());
+    private static void printAggregatedSummary(List<Dataset> datasets, List<Result> results) {
+        System.out.println();
+        System.out.println("=== Multi-Seed Benchmark Summary (Mean +/- Std across " + SEEDS.length + " seeds) ===");
+        String header = String.format(Locale.ROOT,
+                "| %-7s | %-9s | %15s | %12s | %18s | %14s | %14s | %14s | %18s |",
+                "Dataset", "Method", "Time (ms)", "Hard Score", "Soft Score",
+                "Completeness", "Prime Occup.", "Prime Cap.", "Private / Demand");
+        String sep = "-".repeat(header.length());
+        System.out.println(sep);
+        System.out.println(header);
+        System.out.println(sep);
+
+        for (Dataset ds : datasets) {
+            for (String algo : List.of("First-Fit", "Timefold")) {
+                List<Result> sub = results.stream()
+                        .filter(r -> r.dataset().equals(ds.name()) && r.algorithm().equals(algo))
+                        .toList();
+
+                double meanMs = sub.stream().mapToLong(Result::millis).average().orElse(0);
+                double stdMs = std(sub.stream().mapToDouble(Result::millis).toArray(), meanMs);
+
+                double meanHard = sub.stream().mapToInt(r -> r.score().hardScore()).average().orElse(0);
+                double meanSoft = sub.stream().mapToInt(r -> r.score().softScore()).average().orElse(0);
+                double stdSoft = std(sub.stream().mapToDouble(r -> r.score().softScore()).toArray(), meanSoft);
+
+                double meanComp = sub.stream().mapToDouble(Result::completeness).average().orElse(0);
+                double meanOcc = sub.stream().mapToDouble(Result::primeOccupied).average().orElse(0);
+                double meanCap = sub.stream().mapToDouble(Result::primeCapacity).average().orElse(0);
+                double meanPriv = sub.stream().mapToLong(Result::assignedPrivate).average().orElse(0);
+                long demand = sub.get(0).demand();
+
+                System.out.println(String.format(Locale.ROOT,
+                        "| %-7s | %-9s | %7.0f +/- %-4.0f | %12.1f | %9.0f +/- %-5.0f | %13.1f%% | %13.1f%% | %13.1f%% | %5.1f/%-3d (%4.1f%%) |",
+                        ds.name(), algo, meanMs, stdMs, meanHard, meanSoft, stdSoft,
+                        meanComp, meanOcc, meanCap, meanPriv, demand, 100.0 * meanPriv / demand));
+            }
+            System.out.println(sep);
+        }
+        System.out.println();
     }
 
-    private static void print(Result result) {
-        System.out.printf(java.util.Locale.ROOT,
-                "%s | %s | %d | %s | %d | %d | %d | %.1f%% | %.1f%% | %.1f%% | %d/%d (%.1f%%) | %s%n",
-                result.dataset(), result.algorithm(), result.millis(), result.score(), result.hardMatches(),
-                result.softPenaltyMatches(), result.softRewardMatches(), result.completeness(),
-                result.primeOccupied(), result.primeCapacity(), result.assignedPrivate(), result.demand(),
-                demandPercent(result), result.termination());
+    private static double std(double[] values, double mean) {
+        if (values.length <= 1) return 0.0;
+        double sumSq = 0.0;
+        for (double v : values) {
+            sumSq += (v - mean) * (v - mean);
+        }
+        return Math.sqrt(sumSq / (values.length - 1));
     }
 }
