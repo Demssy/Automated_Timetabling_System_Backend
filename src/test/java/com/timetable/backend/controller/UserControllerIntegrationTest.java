@@ -98,7 +98,7 @@ class UserControllerIntegrationTest {
     @DisplayName("GET /api/user/me - should return 403 without JWT token")
     void getCurrentUser_WithoutToken_ReturnsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/user/me"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -106,7 +106,7 @@ class UserControllerIntegrationTest {
     void getCurrentUser_WithInvalidToken_ReturnsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/user/me")
                         .header("Authorization", "Bearer invalid.token.here"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }
 

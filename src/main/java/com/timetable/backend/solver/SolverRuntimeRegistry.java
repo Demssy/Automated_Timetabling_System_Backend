@@ -14,10 +14,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,7 +35,11 @@ public class SolverRuntimeRegistry {
         thread.setDaemon(true);
         return thread;
     });
-    private final ExecutorService monitors = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService monitors = Executors.newCachedThreadPool(task -> {
+        Thread thread = new Thread(task, "solver-runtime-monitor");
+        thread.setDaemon(true);
+        return thread;
+    });
     private Runtime active;
 
     @PostConstruct
@@ -50,7 +54,7 @@ public class SolverRuntimeRegistry {
     }
 
     public synchronized void solve(Long id, SolverSettingsValues settings,
-            Function<Long, DanceSchedule> finder, Consumer<DanceSchedule> consumer) {
+                                   Function<Long, DanceSchedule> finder, Consumer<DanceSchedule> consumer) {
         cleanUp();
         if (findRunning(id) != null) {
             throw new IllegalStateException("Solver is already running for schedule " + id);
@@ -73,12 +77,12 @@ public class SolverRuntimeRegistry {
                         return finder.apply(problemId);
                     })
                     .withBestSolutionConsumer(consumer)
-                    .withFinalBestSolutionConsumer(solution -> runtime.pendingConsumers.remove(id))
+                    .withFinalBestSolutionConsumer(solution -> markConsumerCompleted(runtime, id))
                     .run();
             monitors.execute(() -> monitor(job, runtime, id, finderStarted));
         } catch (RuntimeException e) {
+            markConsumerCompleted(runtime, id);
             runtime.ids.remove(id);
-            runtime.pendingConsumers.remove(id);
             throw e;
         }
     }
@@ -121,6 +125,11 @@ public class SolverRuntimeRegistry {
         }
     }
 
+    private synchronized void markConsumerCompleted(Runtime runtime, Long id) {
+        runtime.pendingConsumers.remove(id);
+        notifyAll();
+    }
+
     @PreDestroy
     public synchronized void close() {
         reaper.shutdownNow();
@@ -132,10 +141,13 @@ public class SolverRuntimeRegistry {
             }
         }
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (runtimes.stream().anyMatch(runtime -> !runtime.pendingConsumers.isEmpty())
-                && System.nanoTime() < deadline) {
+        while (runtimes.stream().anyMatch(runtime -> !runtime.pendingConsumers.isEmpty())) {
+            long remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+            if (remainingMillis <= 0) {
+                break;
+            }
             try {
-                Thread.sleep(10);
+                wait(Math.min(remainingMillis, 10L));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.warn("Interrupted while waiting for solver result persistence", e);
@@ -159,7 +171,7 @@ public class SolverRuntimeRegistry {
                 Thread.sleep(10);
             }
             if (job.getSolverStatus() == SolverStatus.NOT_SOLVING && !finderStarted.get()) {
-                runtime.pendingConsumers.remove(id);
+                markConsumerCompleted(runtime, id);
                 return;
             }
             job.getFinalBestSolution();
@@ -167,7 +179,7 @@ public class SolverRuntimeRegistry {
             Thread.currentThread().interrupt();
             log.warn("Interrupted while monitoring solver for schedule {}", id, e);
         } catch (ExecutionException e) {
-            runtime.pendingConsumers.remove(id);
+            markConsumerCompleted(runtime, id);
             log.error("Solver failed for schedule {}", id, e.getCause());
         }
     }

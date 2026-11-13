@@ -36,7 +36,6 @@ class SolverSettingsServiceTest {
     @BeforeEach
     void setUp() {
         SolverWeightsConfig defaults = new SolverWeightsConfig();
-        defaults.setRewardPrimeTime(10);
         mapper = new SolverSettingsMapper(new ObjectMapper());
         service = new SolverSettingsService(states, presets, mapper, defaults, Duration.ofSeconds(10), validator);
         state = new SolverSettingsState();
