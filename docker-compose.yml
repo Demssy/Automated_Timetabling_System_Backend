@@ -1,0 +1,18 @@
+services:
+  mysql:
+    image: mysql:8.4.7
+    container_name: timetable_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change_me_root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-timetable_db}
+      MYSQL_USER: ${MYSQL_USER:-timetable_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change_me_db_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./dump.sql:/docker-entrypoint-initdb.d/dump.sql
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:

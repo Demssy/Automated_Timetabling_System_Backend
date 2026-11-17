@@ -1,244 +1,130 @@
-# Automated Timetabling System for Dance School (Backend)
-
-## 1. Project Overview
-
-The **Automated Timetabling System for Dance School** backend provides a REST API for managing school resources and generating weekly lesson schedules. It uses constraint-based optimization to assign teachers, students, groups, rooms, private lesson templates, and timeslots while respecting recurring availability and one-time unavailability.
-
-Core capabilities include role-based account management, administration of dance groups and dictionaries, weekly availability management, schedule generation, schedule publication, and cancellation or restoration of scheduled lessons. A teacher may also be registered as a student, and the scheduling model accounts for this dual role.
-
-## 2. Technology Stack and Prerequisites
-
-| Concern | Technology |
-|---|---|
-| Language and runtime | Java 21 (OpenJDK / Eclipse Temurin) |
-| Framework | Spring Boot 3.x (project uses 3.5.8) |
-| Optimization engine | Timefold Solver, Constraint Streams, `HardSoftScore` |
-| Security | Spring Security 6, stateless JWT authentication (JJWT) |
-| Persistence | Spring Data JPA, Hibernate, MySQL 8.x |
-| Database migrations | Flyway, migrations `V1` through `V26` |
-| Build tool | Maven Wrapper (`mvnw` / `mvnw.cmd`) |
-| Tests | JUnit 5, Spring Boot Test, Timefold constraint testing, H2 |
-
-Install **JDK 21** and **Docker**. Ensure ports **3306** (MySQL) and **8080** (HTTP API) are available. The included database container configuration supports MySQL 8.0; the repository's `Dockerfile` uses MySQL 8.4.
-
-## 3. Architecture and Project Layout
-
-```text
-src/main/java/com/timetable/backend
-├── BackendApplication.java
-├── config        Security, solver weights, private lesson template initialization
-├── controller    REST endpoints grouped by domain
-├── domain
-│   ├── model       JPA entities
-│   ├── repository  Spring Data repositories
-│   ├── dto         API request and response types
-│   └── mapper      Entity and DTO mapping
-├── security      JWT filter, token service, user details service
-├── service       Business logic, solver orchestration and persistence
-└── solver        Timefold planning solution and constraint provider
-```
-
-- **`com.timetable.backend.solver`** contains `DanceSchedule`, the Timefold planning solution, and `DanceScheduleConstraintProvider`. The planning entity is `Lesson` in `com.timetable.backend.domain.model` (it is also a JPA entity). `timeslot` and `student` are planning variables; a private lesson's student may be left unassigned when no valid match is available.
-- **`com.timetable.backend.domain`** contains entities such as `AbstractUser`, `Teacher`, `Student`, `DanceGroup`, `Room`, `Timeslot`, `Lesson`, `WeeklyAvailability`, and `ResourceUnavailability`, as well as repositories, DTOs, and mappers.
-- **`com.timetable.backend.service`** contains application logic. `SolverProblemLoaderService` assembles the planning problem from persisted data; `SolverService` manages solving; `SolutionPersistenceService` persists the result. `PrivateLessonTemplateInitializer` seeds private lesson templates. Other services handle users, availability, schedules, lessons, and related domain operations. Solver score explanations and unmet-student reports are available through the solver API.
-- **`com.timetable.backend.controller`** exposes the REST API, grouped by authentication, schedules, lessons, availability, groups, dictionaries, and solver administration.
-- **`com.timetable.backend.security`** implements JWT authentication. The filter reads bearer tokens, and the user details service loads the authenticated user. Sessions are stateless; authentication routes and selected public dance-style reads are open, while the remaining API requires authentication. Admin operations are role-protected.
-
-### Planning model scope
+# Automated Timetabling System — Backend (`SE-60`)
 
-Although rooms are managed as domain entities, **room is not a planning variable** in the current solver model. `Lesson.room` is pre-assigned, and the constraint provider documents a single-room scheduling assumption. Room occupancy is represented by the hard constraints limiting concurrent private lessons and prohibiting private lessons during a group lesson. The current solver does not implement a general room-assignment, room-style-suitability, or multi-room conflict constraint. Those capabilities would require extending the planning model and constraint provider.
+A constraint-based weekly class scheduling backend for a single-hall dance studio, built with **Java 21**, **Spring Boot 3.5.8**, **Timefold Solver 1.6.0**, and **MySQL 8.4.7**[cite: 11, 12].
 
-## 4. Mathematical Model and Solver Logic
+---
 
-Let \(L\) be the set of lessons, \(T\) the set of available timeslots, and \(S\) the set of students. The solver chooses a timeslot \(t(l) \in T\) for each lesson \(l \in L\), and an optional student \(s(l) \in S \cup \{\varnothing\}\) for private lessons. Group lessons do not receive a student assignment. Weekly availability, one-time unavailability, teacher and student relationships, schedule dates, and lesson data are problem facts.
+## 1. Overview & Architecture
 
-Timefold evaluates each candidate schedule with a lexicographic `HardSoftScore` \((H, S)\). Hard-constraint violations reduce the hard score; soft penalties and rewards contribute to the soft score. Feasibility requires a hard score of zero. Feasible schedules are then ranked by soft score. The solver uses a default termination limit of 10 seconds and reproducible environment mode; the termination limit is configurable.
+The backend is implemented as a **modular monolith** running inside a single JVM process, combining REST API management, stateless JWT authentication, transactional schedule lifecycle controls, and an embedded heuristic constraint solver[cite: 11, 12]:
 
-**Important scope distinction:** the implemented constraints below describe the current backend. The model does not currently contain a separate room variable or a soft constraint for explicit student preferred-time matching. Student time preferences are represented through availability; private-lesson assignment and prime-time use have explicit rewards.
+* **Dual-Mode Single-Hall Modeling:** A group class claims **100%** of the hall exclusively, whereas up to **four** private lessons may share the hall concurrently (**25%** capacity each)[cite: 11]. Collision detection evaluates half-open time intervals (`startA < endB && startB < endA`)[cite: 11].
+* **Dual-Role Support:** A single user account (`users`) can hold both `TEACHER` and `STUDENT` roles with role-scoped weekly availability and dated unavailability exceptions while preventing overlapping teaching and learning commitments[cite: 11].
+* **Heuristic Optimization:** Uses Timefold Solver (`Construction Heuristic` + `Entity Tabu Search`) with lexicographic `HardSoftScore` evaluation, configurable weights/presets, pinned group anchors (`@PlanningPin`), and stale-revision guards (`solverRevision`)[cite: 11].
+* **Concurrency & Publication Guards:** Uses optimistic locking (`@Version`), pessimistic schedule-row locking, and a singleton database lock (`SchedulePublicationLock`) to serialize concurrent schedule publications[cite: 11].
 
-### 4.1 Hard constraints (feasibility)
+### Package Structure (`src/main/java/com/timetable/backend`)
+* `config/` — Security filter chain (`SecurityConfig`), default solver weights (`SolverWeightsConfig`), and template initializers[cite: 12].
+* `controller/` — REST endpoints for authentication, users, teachers, students, groups, availability, lessons, schedules, solver execution, and runtime solver settings[cite: 12].
+* `domain/` — JPA entities, DTOs, MapStruct mappers, repositories, and domain exceptions[cite: 12].
+* `security/` — Stateless JWT generation/validation (`JwtService`, `JwtAuthenticationFilter`) and Argon2 password hashing[cite: 11, 12].
+* `service/` — Transactional business logic, schedule lifecycle management, cancellation audit, score evaluation, and solution persistence[cite: 12].
+* `solver/` — Timefold `@PlanningSolution` (`DanceSchedule`), constraint streams (`DanceScheduleConstraintProvider`), and asynchronous runtime registry (`SolverRuntimeRegistry`)[cite: 11, 12].
 
-| Constraint | Implemented behavior |
-|---|---|
-| Teacher conflict | A teacher cannot teach two lessons in the same timeslot. |
-| Concurrent private lesson limit | No more than four private lessons can be assigned to one timeslot (the single-room capacity assumption). |
-| Group lesson occupancy | Private lessons cannot be scheduled during a group lesson. |
-| Dual-role conflict | A teacher cannot teach while attending another lesson as a student at the same time. |
-| Self-teaching prevention | A teacher cannot teach a group lesson in which they are enrolled as a student. |
-| Teacher daily limit | A teacher cannot exceed the configured maximum number of lessons per day (default: six). |
-| Teacher weekly availability | Lessons must fit within the teacher's weekly availability windows. |
-| Teacher one-time unavailability | Lessons cannot conflict with a teacher's dated unavailability entries. |
-| Teacher desired weekly maximum | A teacher cannot exceed `desiredLessonsPerWeek`, when configured. |
-| Group lesson student assignment | Group lessons cannot have an assigned private-lesson student. |
-| Teacher-student relationship | A private lesson's student must be subscribed to that teacher. |
-| Student conflict | A student cannot be assigned to two lessons in the same timeslot. |
-| Student daily private-lesson limit | A student can have at most one private lesson per day. |
-| Student availability | Private lessons must fit the student's weekly availability and avoid one-time unavailability. |
-| Student daily availability-window limit | A student's daily lesson count cannot exceed the number of that day's availability windows. |
-| Student desired weekly maximum | A student cannot exceed `desiredLessonsPerWeek`, when configured. |
+---
 
-### 4.2 Soft constraints (quality optimization)
+## 2. System Requirements & Dependencies
 
-| Constraint | Effect |
-|---|---|
-| Private lesson assignment reward | Rewards assigning a student to a private lesson; an unassigned template remains possible when no valid match exists. |
-| Teacher schedule gaps | Penalizes idle gaps between a teacher's lessons on the same day when they exceed the configured threshold (default: 15 minutes). |
-| Teacher workload balance | Penalizes teacher workloads using a squared lesson-count penalty, encouraging more even distribution. |
-| Prime-time utilization | Rewards lessons starting from 16:00 up to (but not including) 21:00. |
-| Teacher desired weekly count | Penalizes teachers for falling short of their desired weekly lesson count. |
-| Student desired weekly count | Penalizes students for falling short of their desired weekly lesson count. |
+* **Java Development Kit (JDK):** Java **21** (configured via `java.version=21` in `pom.xml`)[cite: 11]
+* **Build Tool:** Apache Maven (included via Maven Wrapper `./mvnw` / `.\mvnw.cmd`)[cite: 11, 12]
+* **Database:** **MySQL 8.4.7** (or **Docker** + **Docker Compose** to run the provided MySQL container)[cite: 11]
 
-Weights and thresholds are configurable under `solver.weights.*` in `src/main/resources/application.properties` and `SolverWeightsConfig`. For example, the configured application properties reward private lesson assignment by 100 and prime-time use by 10. Constraint tests are in `src/test/java/com/timetable/backend/solver`.
+---
 
-The admin solver settings API stores one active set and named presets in the database. Reset restores the configured startup defaults without deleting presets. Selecting or editing settings does not start the solver or recalculate an existing schedule. New runs use a snapshot of the active settings; already running jobs keep their original snapshot. Score explanations and subsequent schedule validations use the current settings.
+## 3. Installation, Database Setup & Running
 
-The following integer fields form a complete settings object:
+### Step 1: Configuration & Environment Variables
+Default settings in `src/main/resources/application.properties` support the following environment variables[cite: 12, 15]:
 
-| Field | Default | Range |
-|---|---:|---|
-| `solverTimeLimitSeconds` | 10 | 5-300 |
-| `maxAllowedHardPenalty` | 0 | >= 0 |
-| `teacherMaxDailyLessons` | 6 | >= 1 |
-| `teacherBreakThresholdMinutes` | 15 | >= 0 |
-| `physicalConflictHardWeight` | 1 | 1-50 |
-| `weeklyAvailabilityHardWeight` | 1 | 1-20 |
-| `teacherDailyLimitHardWeight` | 1 | 0-20 |
-| `studentMultipleDailyPrivateHardWeight` | 1 | 0-20 |
-| `weeklyQuotaOverflowHardWeight` | 1 | 1-20 |
-| `privateLessonAssignmentReward` | 100 | 0-100 |
-| `primeTimeLessonReward` | 10 | 0-100 |
-| `studentUnfulfilledLessonPenalty` | 50 | 0-100 |
-| `teacherUnfulfilledLessonPenalty` | 30 | 0-100 |
-| `teacherGapPenaltyMultiplier` | 1 | 0-100 |
-| `teacherWorkloadFairnessMultiplier` | 1 | 0-100 |
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `MYSQL_IP` | `localhost` | Hostname or IP address of the MySQL 8.4.7 instance[cite: 15] |
+| `TIMETABLE_API_PORT` | `8080` | HTTP port exposed by the Spring Boot server[cite: 15] |
+| `JWT_SECRET` | *(dev base64 default)* | Base64-encoded HS256 signing key (override in production)[cite: 15] |
 
-Defaults for the existing weights, limits and solver time are derived from application configuration and must satisfy the ranges above; invalid configured defaults prevent startup. A nonzero `maxAllowedHardPenalty` permits publication or changes to a published schedule if its initialized hard score is at least the negative threshold; mandatory assignment checks remain in force. A teacher cannot teach and attend another lesson at the same time even when the threshold is nonzero.
+*(Note: Before deploying outside a local development environment, replace the development database credentials in `application.properties` and `docker-compose.yml` with secure environment-injected values and set a strong `JWT_SECRET`.)*[cite: 11, 12, 15]
 
-Setting `teacherDailyLimitHardWeight` or `studentMultipleDailyPrivateHardWeight` to zero disables that particular penalty. Other hard weights remain at least one. Editing an active preset updates the active values; deleting it leaves those values active as a custom set.
+### Step 2: Start MySQL Database
+Start the MySQL 8.4.7 container on port `3306` using Docker Compose[cite: 11, 12]:
 
-Scores use Timefold's 32-bit `HardSoftScore`. The soft-weight limit reduces, but does not eliminate, the risk of integer overflow for unusually large schedules or other extreme inputs.
+    docker compose up -d
 
-## 5. Local Setup and Execution
+> **Schema Evolution & Seed Data:** On application startup, **Flyway** automatically applies ordered migrations `V1` through `V26` from `src/main/resources/db/migration/` (creating all tables, indexes, default roles, default dance styles, the singleton publication lock row, and default solver settings)[cite: 11, 12]. If a `dump.sql` seed file is placed in the backend root directory before first container startup, Docker mounts it into `/docker-entrypoint-initdb.d/dump.sql`[cite: 11, 12].
 
-### 5.1 Start MySQL with Docker
+### Step 3: Build and Run the Backend
+Using the included Maven Wrapper[cite: 11]:
 
-```bash
-docker run --name timetabling-mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=timetable_db -p 3306:3306 -d mysql:8.0
-```
+* **Linux / macOS:**
 
-Check that the container is running with `docker ps`.
+      ./mvnw clean package -DskipTests
+      ./mvnw spring-boot:run
 
-### 5.2 Restore an optional SQL dump
+* **Windows (PowerShell / CMD):**
 
-Place `dump.sql` in the repository root (or adjust the path in the command).
+      .\mvnw.cmd clean package -DskipTests
+      .\mvnw.cmd spring-boot:run
 
-**Windows PowerShell**
+Once started, the REST API is available at: **`http://localhost:8080`**[cite: 11, 15].
 
-```powershell
-Get-Content dump.sql | Where-Object { $_ -notmatch '^mysqldump:' } | docker exec -i timetabling-mysql mysql -u root -proot timetable_db
-```
+---
 
-**Linux / macOS**
+## 4. Demo Accounts & Core API Workflows
 
-```bash
-docker exec -i timetabling-mysql mysql -u root -proot timetable_db < dump.sql
-```
+### Creating / Using Demo Accounts
+* If initializing the database with the provided `dump.sql` seed script, sign in using the pre-configured demo credentials listed in the seed data header[cite: 11, 12].
+* If starting from a clean Flyway-migrated database[cite: 11]:
+  1. Register `STUDENT` or `TEACHER` accounts via `POST /api/auth/register` (public registration intentionally blocks self-registration with the `ADMIN` role)[cite: 11].
+  2. To create an administrator account, assign the `ADMIN` role (`role_id` matching `ADMIN` in `V6__insert_default_roles.sql`) in the `users` / `user_roles` tables[cite: 11, 12].
 
-### 5.3 Configure the application
+### Core Operational Workflows (REST API)
 
-The defaults in `src/main/resources/application.properties` match the Docker command above:
+1. **Authentication (`AuthController`)**[cite: 11, 12]
+   * `POST /api/auth/register` — Register a `STUDENT` or `TEACHER` account (teachers require at least one dance style specialization)[cite: 11].
+   * `POST /api/auth/login` — Authenticate with email and password; returns `UserResponse` and sets an HTTP-only `jwt` cookie (`1 hour` TTL; `Authorization: Bearer <token>` is also supported)[cite: 11, 15].
 
-```properties
-spring.datasource.url=jdbc:mysql://${MYSQL_IP:localhost}:3306/timetable_db
-spring.datasource.username=root
-spring.datasource.password=root
-```
+2. **Master Data & Availability Setup**
+   * `GET /api/dance-styles`, `GET /api/dictionaries/*` — Retrieve dance styles, rooms, and discrete timeslots[cite: 12].
+   * `GET / POST /api/availability/weekly?role=TEACHER|STUDENT` — Configure role-scoped recurring weekly availability intervals[cite: 11].
+   * `GET / POST /api/unavailability` — Register dated one-time absences[cite: 11, 12].
+   * `POST /api/lessons` — Create recurring group lessons (automatically pinned during solving) or private lesson templates[cite: 11].
 
-Flyway applies migrations `V1`–`V23` at startup. The following environment variables can override application defaults:
+3. **Asynchronous Timetable Optimization (`SolverController` & `SolverSettingsController`)**[cite: 11, 12]
+   * `GET / PUT /api/v1/solver/settings` — View or customize solver time limit (`5–300s`, default `10s`), constraint weights, daily limits, and named presets[cite: 11, 15].
+   * `POST /api/schedules` — Create a `DRAFT` schedule with a `[validFrom, validTo]` date window[cite: 11].
+   * `POST /api/admin/solver/solve/{scheduleId}` — Launch an asynchronous Timefold optimization run (returns `202 Accepted`)[cite: 11].
+   * `GET /api/admin/solver/status/{scheduleId}` — Poll solver status (`SOLVING_SCHEDULED`, `SOLVING_ACTIVE`, `NOT_SOLVING`)[cite: 11].
+   * `POST /api/admin/solver/stop/{scheduleId}` — Request early termination while preserving the best solution found so far[cite: 11].
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `MYSQL_IP` | `localhost` | MySQL host used in the JDBC URL |
-| `TIMETABLE_API_PORT` | `8080` | Backend HTTP port |
-| `JWT_SECRET` | Development-only key | Base64-encoded JWT signing secret |
+4. **Review, Manual Edits & Guarded Publication**
+   * `GET /api/admin/solver/solution/{scheduleId}` — Retrieve materialized assignments (`ScheduledLessonDTO`) and `HardSoftScore`[cite: 11].
+   * `GET /api/admin/solver/score-explanation/{scheduleId}` & `/unmet-students/{scheduleId}` — Inspect per-constraint score breakdown and unfulfilled student demand[cite: 11].
+   * `PATCH /api/scheduled-lessons/{id}/cancel` & `/restore` — Cancel a specific lesson occurrence (recording actor, timestamp, and reason) or restore it as an admin[cite: 11].
+   * `PATCH /api/schedules/{id}/publish` — Validate mandatory hard constraints, check for overlapping published schedules under `SchedulePublicationLock`, and transition status to `PUBLISHED`[cite: 11].
 
-The checked-in credentials and JWT key are for local development only. Use a strong secret and non-default database credentials outside a local development environment.
+---
 
-### 5.4 Launch the backend
+## 5. Automated Testing & Reproducing Experiments
 
-**Windows PowerShell**
+The test suite uses JUnit 5, Spring Boot Test, Timefold Solver Test, and an in-memory H2 database configured in MySQL compatibility mode (`src/main/resources/application-test.properties`)[cite: 11, 12].
 
-```powershell
-.\mvnw spring-boot:run
-```
+### Run All 227 Automated Tests
 
-**Linux / macOS**
+    ./mvnw test
 
-```bash
-./mvnw spring-boot:run
-```
+*(On Windows: `.\mvnw.cmd test`)*[cite: 11]
 
-The API listens at `http://localhost:8080` by default.
+Expected summary:
 
-### 5.5 Run tests
+    Tests run: 227, Failures: 0, Errors: 0, Skipped: 0
+    BUILD SUCCESS
 
-```powershell
-.\mvnw clean test
-```
+### Reproduce Empirical Benchmarks & Weight Sensitivity Experiments
+To reproduce the synthetic benchmark comparison (**Greedy First-Fit vs. Timefold Solver** across Scenarios `A–D` with `EnvironmentMode.REPRODUCIBLE` and `seed = 42`) and the 4-preset weight calibration experiment[cite: 11]:
 
-The test profile uses an in-memory H2 database and disables Flyway, so tests do not require the local MySQL container.
+    ./mvnw test -Dtest=SolverBenchmarkEvaluationTest,WeightCalibrationTest
 
-Run the reproducible Timefold/first-fit benchmark separately with:
+### Generate JaCoCo Code Coverage Report
 
-```powershell
-.\mvnw.cmd '-Dtest=SolverBenchmarkEvaluationTest' test
-```
+    ./mvnw test jacoco:report
 
-The output includes actual constraint-match counts, assignment completeness, prime-time occupancy and capacity, and demand satisfaction. A negative initialization score means some required planning variables remain unassigned. Runs reaching the 60-second safeguard are not reproducible by step count.
-
-Datasets A and B deliberately test a greedy student-allocation trap: private lessons are ordered by teacher, the first teacher can consume students needed by the second, and the second has fewer subscribers. Both algorithms receive the same input. Group lessons are pinned, so their room occupancy is known to both algorithms regardless of input order. Private lessons without a student are permitted by the solver model and do not necessarily cause a hard violation or negative initialization score, but count as incomplete in this benchmark. Prime-time occupancy and capacity count only fully assigned lessons, so differences can reflect unmatched students rather than better physical packing alone. These synthetic cases illustrate an ordering-sensitive baseline, not general performance across all inputs.
-
-The opt-in shared-fact checks expose a known MySQL publication race: availability, timeslot and group membership changes do not share the publication lock. They currently fail and are excluded from the default suite. To reproduce them, use a **disposable** MySQL database and set `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD`, then run:
-
-```powershell
-$env:SPRING_DATASOURCE_DRIVER_CLASS_NAME = 'com.mysql.cj.jdbc.Driver'
-$env:SPRING_JPA_DATABASE_PLATFORM = 'org.hibernate.dialect.MySQLDialect'
-$env:SPRING_JPA_HIBERNATE_DDL_AUTO = 'none'
-$env:SPRING_FLYWAY_ENABLED = 'true'
-.\mvnw.cmd '-Dtest=PublishedEditRollbackIntegrationTest#publicationCannotCommitAfterAnUncoordinatedConflictingFactChange' '-Dverify.shared-facts=true' test
-```
-
-Flyway applies the migrations to the selected database; do not point this test at a production database.
-
-## 6. Key REST API Endpoints
-
-All endpoints other than the public authentication and selected public dance-style reads require a bearer JWT. Solver administration endpoints require an admin account.
-
-| Domain | Method | Endpoint | Purpose |
-|---|---|---|---|
-| Authentication | `POST` | `/api/auth/register` | Register an account |
-| Authentication | `POST` | `/api/auth/login` | Authenticate and obtain a JWT |
-| Solver (admin) | `POST` | `/api/admin/solver/solve/{scheduleId}` | Start solving a schedule |
-| Solver (admin) | `GET` | `/api/admin/solver/status/{scheduleId}` | Get solver job status |
-| Solver (admin) | `POST` | `/api/admin/solver/stop/{scheduleId}` | Stop a solver job |
-| Solver (admin) | `GET` | `/api/admin/solver/solution/{scheduleId}` | Retrieve the solution |
-| Solver (admin) | `GET` | `/api/admin/solver/score-explanation/{scheduleId}` | Explain score matches and violations |
-| Solver (admin) | `GET` | `/api/admin/solver/unmet-students/{scheduleId}` | Retrieve unmet student demand |
-| Solver settings (admin) | `GET` | `/api/v1/solver/settings` | Get active fields, `defaults`, and `activePresetId` |
-| Solver settings (admin) | `PUT` | `/api/v1/solver/settings` | Replace all active fields; clears the active preset association |
-| Solver settings (admin) | `POST` | `/api/v1/solver/settings/reset` | Restore defaults without deleting presets |
-| Solver settings (admin) | `GET`, `POST` | `/api/v1/solver/settings/presets` | List presets or create one with `name` and `settings` |
-| Solver settings (admin) | `PUT`, `DELETE` | `/api/v1/solver/settings/presets/{id}` | Replace or delete a preset |
-| Solver settings (admin) | `POST` | `/api/v1/solver/settings/presets/{id}/activate` | Activate a preset |
-| Schedules | `GET` | `/api/schedules` | List schedules |
-| Schedules | `GET` | `/api/schedules/{id}` | Retrieve schedule metadata |
-| Weekly availability | `GET` | `/api/availability/weekly` | Read weekly availability |
-| Weekly availability | `POST` | `/api/availability/weekly` | Create weekly availability |
-
-**Endpoint naming note:** the solver routes currently use `/api/admin/solver/...` and a `{scheduleId}` path parameter. The codebase does not currently expose `/api/solver/solve`, `/api/solver/status/{jobId}`, `/api/solver/stop/{jobId}`, `/api/schedules/{id}/score-explanation`, `/api/schedules/{id}/analytics`, or `/api/availability/weekly` as a solver or analytics route. Schedule score explanations are served under `/api/admin/solver/score-explanation/{scheduleId}`; no schedule analytics endpoint is implemented.
-
-## References
-
-- [Timefold Solver documentation](https://docs.timefold.ai/)
-- [Spring Boot documentation](https://docs.spring.io/spring-boot/)
-- [Flyway documentation](https://documentation.red-gate.com/flyway)
+The HTML coverage report is generated at `target/site/jacoco/index.html` (core solver package `com.timetable.backend.solver` achieves **94%** instruction coverage)[cite: 12].

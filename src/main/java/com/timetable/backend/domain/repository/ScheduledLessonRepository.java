@@ -14,6 +14,8 @@ public interface ScheduledLessonRepository extends JpaRepository<ScheduledLesson
 
     void deleteByScheduleId(Long scheduleId);
 
+    boolean existsByLessonId(Long lessonId);
+
     /**
      * Returns (studentId, lessonCount) pairs for all students who received
      * at least one private lesson in the given schedule snapshot.
@@ -39,8 +41,8 @@ public interface ScheduledLessonRepository extends JpaRepository<ScheduledLesson
           AND (l.teacher.id = :teacherId OR al.teacher.id = :teacherId)
         """)
     List<ScheduledLesson> findByScheduleIdAndTeacherId(
-        @Param("scheduleId") Long scheduleId,
-        @Param("teacherId") Long teacherId
+            @Param("scheduleId") Long scheduleId,
+            @Param("teacherId") Long teacherId
     );
 
     /**
@@ -66,7 +68,7 @@ public interface ScheduledLessonRepository extends JpaRepository<ScheduledLesson
           )
         """)
     List<ScheduledLesson> findByScheduleIdAndStudentId(
-        @Param("scheduleId") Long scheduleId,
-        @Param("studentId") Long studentId
+            @Param("scheduleId") Long scheduleId,
+            @Param("studentId") Long studentId
     );
 }

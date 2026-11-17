@@ -44,24 +44,21 @@ public class LessonService {
      * Synchronizes active private lesson templates for a teacher based on their desiredLessonsPerWeek.
      * Falls back to defaultCount only if desiredLessonsPerWeek is null.
      */
+    /**
+     * Synchronizes private lesson templates for a teacher based strictly on their desiredLessonsPerWeek
+     * (independent of group lessons). Excess unpinned templates are deleted (or deactivated if referenced
+     * by historical schedule snapshots).
+     */
+
+
     @Transactional
     public void syncPrivateLessonTemplatesForTeacher(Teacher teacher, int defaultCount) {
-        List<Lesson> allTeacherLessons = lessonRepository.findAll().stream()
-                .filter(l -> l.getTeacher() != null && l.getTeacher().getId().equals(teacher.getId()))
-                .toList();
-
-        long activeGroupLessonsCount = allTeacherLessons.stream()
-                .filter(l -> !l.isPrivate() && l.isActive())
-                .count();
-
-        int totalDesired = teacher.getDesiredLessonsPerWeek() != null
+        int targetPrivateCount = Math.max(0, teacher.getDesiredLessonsPerWeek() != null
                 ? teacher.getDesiredLessonsPerWeek()
-                : defaultCount;
+                : defaultCount);
 
-        // Calculate how many private templates this teacher actually needs
-        int targetPrivateCount = Math.max(0, totalDesired - (int) activeGroupLessonsCount);
-
-        List<Lesson> privateTemplates = allTeacherLessons.stream()
+        List<Lesson> privateTemplates = lessonRepository.findAll().stream()
+                .filter(l -> l.getTeacher() != null && l.getTeacher().getId().equals(teacher.getId()))
                 .filter(Lesson::isPrivate)
                 .sorted(Comparator.comparing(Lesson::isPinned).reversed()
                         .thenComparing(Lesson::getId))
@@ -69,6 +66,7 @@ public class LessonService {
 
         int activeCount = 0;
         List<Lesson> toUpdate = new java.util.ArrayList<>();
+        List<Lesson> toDelete = new java.util.ArrayList<>();
 
         for (Lesson template : privateTemplates) {
             if (activeCount < targetPrivateCount) {
@@ -77,15 +75,24 @@ public class LessonService {
                     toUpdate.add(template);
                 }
                 activeCount++;
-            } else if (!template.isPinned() && template.isActive()) {
-                // Deactivate excess unpinned templates so the solver does not load them
-                template.setActive(false);
-                toUpdate.add(template);
+            } else if (!template.isPinned()) {
+                // Remove excess unpinned private templates (or deactivate if referenced in schedule snapshots)
+                if (scheduledLessonRepository.existsByLessonId(template.getId())) {
+                    if (template.isActive()) {
+                        template.setActive(false);
+                        toUpdate.add(template);
+                    }
+                } else {
+                    toDelete.add(template);
+                }
             }
         }
 
         if (!toUpdate.isEmpty()) {
             lessonRepository.saveAll(toUpdate);
+        }
+        if (!toDelete.isEmpty()) {
+            lessonRepository.deleteAll(toDelete);
         }
 
         int needed = targetPrivateCount - activeCount;
