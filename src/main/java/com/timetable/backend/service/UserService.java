@@ -155,8 +155,15 @@ public class UserService {
         if (request.role() != null) {
             Role role = roleRepository.findByName(request.role())
                     .orElseThrow(() -> new IllegalArgumentException("Role not found: " + request.role()));
-            user.setRole(role);
-            user.setRoles(new java.util.HashSet<>(java.util.Set.of(role)));
+            // Preserve additional roles (e.g., dual-role TEACHER + STUDENT) when updating profile fields
+            if (user.getRole() == null || !user.getRole().getName().equals(role.getName())) {
+                Role previousPrimary = user.getRole();
+                if (previousPrimary != null && user.getRoles() != null) {
+                    user.getRoles().remove(previousPrimary);
+                }
+                user.setRole(role);
+                user.addRole(role);
+            }
         }
 
         return mapToUserResponse(user);

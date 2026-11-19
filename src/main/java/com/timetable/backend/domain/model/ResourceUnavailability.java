@@ -20,12 +20,10 @@ public class ResourceUnavailability {
     @EqualsAndHashCode.Include
     private Long id;
 
-    // Изменено с Teacher на AbstractUser для поддержки студентов
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     private AbstractUser user;
 
-    // Заменили Timeslot на конкретную дату и промежуток времени
     @Column(name = "unavailability_date", nullable = false)
     private LocalDate date;
 

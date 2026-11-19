@@ -1000,6 +1000,96 @@ class DanceScheduleConstraintProviderTest {
             .given(lesson)
             .rewardsWith(0);
     }
+// ==================== QUOTAS & AVAILABILITY-WINDOW MATCHING ====================
+
+    @Test
+    @DisplayName("Student daily windows: Penalty when private lessons exceed declared availability windows")
+    void penaltyWhenStudentLessonsExceedDailyAvailabilityWindows() {
+        Student student = createStudent(100L, "Alice");
+        Teacher t1 = createTeacher(1L, "T1");
+        Teacher t2 = createTeacher(2L, "T2");
+        Lesson l1 = createLesson(1L, t1, null, createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00"), true, false);
+        Lesson l2 = createLesson(2L, t2, null, createTimeslot(2L, DayOfWeek.MONDAY, "17:00", "18:00"), true, false);
+        l1.setStudent(student);
+        l2.setStudent(student);
+        WeeklyAvailability singleWindow = createWeeklyAvailability(1L, student, DayOfWeek.MONDAY, "16:00", "19:00");
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::studentLessonsPerDayMatchAvailabilityWindows)
+                .given(l1, l2, singleWindow)
+                .penalizesBy(1);
+
+        WeeklyAvailability secondWindow = createWeeklyAvailability(2L, student, DayOfWeek.MONDAY, "19:00", "20:00");
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::studentLessonsPerDayMatchAvailabilityWindows)
+                .given(l1, l2, singleWindow, secondWindow)
+                .penalizesBy(0);
+    }
+
+    @Test
+    @DisplayName("Student weekly cap: Penalty when assigned private lessons exceed desiredLessonsPerWeek")
+    void penaltyWhenStudentExceedsDesiredLessonsPerWeek() {
+        Student student = createStudent(100L, "Alice");
+        student.setDesiredLessonsPerWeek(1);
+        Teacher teacher = createTeacher(1L, "T1");
+        Lesson l1 = createLesson(1L, teacher, null, createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00"), true, false);
+        Lesson l2 = createLesson(2L, teacher, null, createTimeslot(2L, DayOfWeek.TUESDAY, "16:00", "17:00"), true, false);
+        l1.setStudent(student);
+        l2.setStudent(student);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::studentDoNotExceedDesiredLessonsPerWeek)
+                .given(l1, l2)
+                .penalizesBy(1);
+    }
+
+    @Test
+    @DisplayName("Teacher weekly cap: Penalty when scheduled lessons exceed desiredLessonsPerWeek")
+    void penaltyWhenTeacherExceedsDesiredLessonsPerWeek() {
+        Teacher teacher = createTeacher(1L, "T1");
+        teacher.setDesiredLessonsPerWeek(1);
+        Lesson group = createLesson(1L, teacher, createDanceGroup(1L, "G1"),
+                createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00"), false, true);
+        Lesson priv = createLesson(2L, teacher, null,
+                createTimeslot(2L, DayOfWeek.TUESDAY, "16:00", "17:00"), true, false);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherDoNotExceedDesiredLessonsPerWeek)
+                .given(group, priv)
+                .penalizesBy(1);
+    }
+
+    @Test
+    @DisplayName("Student weekly demand reward: Monotonic reward capped at desiredLessonsPerWeek")
+    void rewardStudentMeetingDesiredLessonsPerWeekIsCapped() {
+        Student student = createStudent(100L, "Alice");
+        student.setDesiredLessonsPerWeek(2);
+        Teacher teacher = createTeacher(1L, "T1");
+        Lesson l1 = createLesson(1L, teacher, null, createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00"), true, false);
+        Lesson l2 = createLesson(2L, teacher, null, createTimeslot(2L, DayOfWeek.TUESDAY, "16:00", "17:00"), true, false);
+        Lesson l3 = createLesson(3L, teacher, null, createTimeslot(3L, DayOfWeek.WEDNESDAY, "16:00", "17:00"), true, false);
+        l1.setStudent(student);
+        l2.setStudent(student);
+        l3.setStudent(student);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::studentMeetDesiredLessonsPerWeek)
+                .given(l1, l2, l3)
+                .rewardsWith(2);
+    }
+
+    @Test
+    @DisplayName("Teacher weekly demand reward: Monotonic reward capped at desiredLessonsPerWeek")
+    void rewardTeacherMeetingDesiredLessonsPerWeekIsCapped() {
+        Teacher teacher = createTeacher(1L, "T1");
+        teacher.setDesiredLessonsPerWeek(2);
+        Lesson l1 = createLesson(1L, teacher, createDanceGroup(1L, "G1"),
+                createTimeslot(1L, DayOfWeek.MONDAY, "16:00", "17:00"), false, true);
+        Lesson l2 = createLesson(2L, teacher, null,
+                createTimeslot(2L, DayOfWeek.TUESDAY, "16:00", "17:00"), true, false);
+        Lesson l3 = createLesson(3L, teacher, null,
+                createTimeslot(3L, DayOfWeek.WEDNESDAY, "16:00", "17:00"), true, false);
+
+        constraintVerifier.verifyThat(DanceScheduleConstraintProvider::teacherMeetDesiredLessonsPerWeek)
+                .given(l1, l2, l3)
+                .rewardsWith(2);
+    }
+
 
     // ==================== Test Data Builders ====================
 

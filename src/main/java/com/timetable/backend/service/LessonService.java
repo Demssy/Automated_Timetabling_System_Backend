@@ -140,25 +140,19 @@ public class LessonService {
 
     @Transactional(readOnly = true)
     public List<ScheduledLessonDTO> getActiveScheduleLessons() {
-        LocalDate today = LocalDate.now();
-
-        boolean hasActivePublishedSchedule = scheduleMetadataRepository.findAll().stream()
-                .filter(schedule -> schedule.getStatus() == ScheduleStatus.PUBLISHED)
-                .filter(schedule -> !today.isBefore(schedule.getValidFrom()) && !today.isAfter(schedule.getValidTo()))
-                .max(Comparator.comparing(ScheduleMetadata::getCreatedAt))
-                .isPresent();
-
-        if (!hasActivePublishedSchedule) {
+        Long activeScheduleId = resolveActiveScheduleId();
+        if (activeScheduleId == null) {
             return List.of();
         }
 
-        return lessonRepository.findByIsActiveTrue().stream()
-                .filter(lesson -> lesson.getTimeslot() != null)
-                .filter(lesson -> lesson.getRoom() != null)
+        // Read concrete snapshots from the active published schedule rather than templates
+        return scheduledLessonRepository.findByScheduleIdOrderByIdAsc(activeScheduleId).stream()
+                .filter(sl -> !sl.isCancelled() && sl.getStatus() == ScheduledLessonStatus.ASSIGNED)
+                .filter(sl -> sl.getTimeslot() != null && sl.getRoom() != null)
                 .sorted(Comparator
-                        .comparing((Lesson lesson) -> lesson.getTimeslot().getDayOfWeek())
-                        .thenComparing(lesson -> lesson.getTimeslot().getStartTime())
-                        .thenComparing(Lesson::getId))
+                        .comparing((ScheduledLesson sl) -> sl.getTimeslot().getDayOfWeek())
+                        .thenComparing(sl -> sl.getTimeslot().getStartTime())
+                        .thenComparing(ScheduledLesson::getId))
                 .map(lessonMapper::toScheduledLessonDTO)
                 .toList();
     }
@@ -269,31 +263,11 @@ public class LessonService {
 
     @Transactional
     public void deleteLesson(Long id) {
-        ScheduleMetadata snapshotSchedule = scheduleMetadataRepository.findBySnapshotIdForUpdate(id).orElse(null);
-        ScheduledLesson scheduledLesson = snapshotSchedule == null
-                ? null : scheduledLessonRepository.findById(id).orElse(null);
-
-        if (scheduledLesson != null) {
-            requireEditable(snapshotSchedule);
-            if (scheduledLesson.getAddedLesson() != null) {
-                deleteScheduledLesson(id);
-                return;
-            }
-            if (scheduledLesson.getLesson() != null) {
-                id = scheduledLesson.getLesson().getId();
-            }
-        }
-
+        // Strictly delete Lesson templates; grid snapshots must use deleteScheduledLesson(id)
         if (!lessonRepository.existsById(id)) {
             throw new IllegalArgumentException("Lesson not found with id: " + id);
         }
-
         lessonRepository.deleteById(id);
-        if (snapshotSchedule != null) {
-            lessonRepository.flush();
-            invalidateSolver(snapshotSchedule);
-            recalculateAfterEdit(snapshotSchedule);
-        }
     }
 
     @Transactional
@@ -347,7 +321,7 @@ public class LessonService {
             boolean roomChanged = !Objects.equals(currentRoomId, request.roomId());
 
             if (timeslotChanged || roomChanged) {
-                throw new HttpClientErrorException(HttpStatus.BAD_REQUEST,"Cannot reschedule a pinned lesson. Unpin it first.");
+                throw new HttpClientErrorException(HttpStatus.CONFLICT, "Cannot reschedule a pinned lesson. Unpin it first.");
             }
         }
 
@@ -601,31 +575,6 @@ public class LessonService {
             scoreEvaluationService.validateAndRecalculate(schedule.getId(), false);
         } else {
             scoreEvaluationService.recalculate(schedule.getId());
-        }
-    }
-
-    /**
-     * Applies Private/Group lesson type branching for {@link UpdateLessonRequest}.
-     * Logic mirrors {@link #applyLessonType(Lesson, CreateLessonRequest)}.
-     */
-    private void applyLessonTypeForUpdate(Lesson lesson, UpdateLessonRequest request) {
-        if (request.isPrivate()) {
-            if (request.studentId() != null) {
-                Student student = studentRepository.findById(request.studentId())
-                        .orElseThrow(() -> new IllegalArgumentException("Student not found with id: " + request.studentId()));
-                lesson.setStudent(student);
-            } else {
-                lesson.setStudent(null);
-            }
-            lesson.setDanceGroup(null);
-        } else {
-            if (request.danceGroupId() == null) {
-                throw new IllegalArgumentException("A group lesson must have a danceGroupId");
-            }
-            DanceGroup group = danceGroupRepository.findById(request.danceGroupId())
-                    .orElseThrow(() -> new IllegalArgumentException("Dance Group not found with id: " + request.danceGroupId()));
-            lesson.setDanceGroup(group);
-            lesson.setStudent(null);
         }
     }
 

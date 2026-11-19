@@ -48,8 +48,8 @@ public class DanceGroup {
 
     /**
      * Students currently enrolled in this group.
-     * NOTE: This collection is NOT used by the Timefold Solver — it is only accessed
-     * by the enrollment API. The solver only reads DanceGroup identity via Lesson.danceGroup.
+     * Used by both the enrollment API and Timefold constraints (student conflict,
+     * dual-role conflict, and self-teaching checks).
      */
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

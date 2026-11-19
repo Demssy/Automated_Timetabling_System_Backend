@@ -5,13 +5,17 @@ import ai.timefold.solver.core.api.solver.SolverStatus;
 import com.timetable.backend.domain.dto.*;
 import com.timetable.backend.domain.mapper.LessonMapper;
 import com.timetable.backend.domain.model.ScheduledLesson;
+import com.timetable.backend.domain.model.ScheduleStatus;
+import com.timetable.backend.service.ScheduleMetadataService;
 import com.timetable.backend.service.SolverService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,6 +32,7 @@ public class SolverController {
 
     private final SolverService solverService;
     private final LessonMapper lessonMapper;
+    private final ScheduleMetadataService scheduleMetadataService;
 
     /**
      * Starts the solver to optimize the schedule.

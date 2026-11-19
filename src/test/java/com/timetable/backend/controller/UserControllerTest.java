@@ -66,7 +66,7 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/user/me - should return 403 when not authenticated")
+    @DisplayName("GET /api/user/me - should return 401 when not authenticated")
     void getCurrentUser_Unauthorized() throws Exception {
         // When & Then
         mockMvc.perform(get("/api/user/me"))

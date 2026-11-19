@@ -62,7 +62,7 @@ class UserControllerIntegrationTest {
 
         testStudent = new Student();
         testStudent.setEmail("integration.test@example.com");
-        testStudent.setPasswordHash("$2a$10$dummyhash"); // BCrypt hash
+        testStudent.setPasswordHash("$argon2id$v=19$m=16384,t=2,p=1$dummyhash");
         testStudent.setFullName("Integration Test User");
         testStudent.setRole(studentRole);
         testStudent.setActive(true);
@@ -95,14 +95,14 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET /api/user/me - should return 403 without JWT token")
+    @DisplayName("GET /api/user/me - should return 401 without JWT token")
     void getCurrentUser_WithoutToken_ReturnsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/user/me"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @DisplayName("GET /api/user/me - should return 403 with invalid JWT token")
+    @DisplayName("GET /api/user/me - should return 401 with invalid JWT token")
     void getCurrentUser_WithInvalidToken_ReturnsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/user/me")
                         .header("Authorization", "Bearer invalid.token.here"))

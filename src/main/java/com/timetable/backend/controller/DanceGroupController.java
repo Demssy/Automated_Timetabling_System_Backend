@@ -7,11 +7,14 @@ import com.timetable.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * REST controller for the public-facing dance groups catalogue.
@@ -49,8 +52,8 @@ public class DanceGroupController {
     @GetMapping("/my")
     public ResponseEntity<List<DanceGroupDetailsDTO>> getMyGroups(Authentication authentication) {
         Long userId = resolveCurrentUserId(authentication);
-        String role = extractPrimaryRole(authentication);
-        return ResponseEntity.ok(danceGroupService.getMyGroups(userId, role));
+        Set<String> roles = extractRoles(authentication);
+        return ResponseEntity.ok(danceGroupService.getMyGroups(userId, roles));
     }
 
     /**
@@ -73,7 +76,7 @@ public class DanceGroupController {
             @RequestParam(required = false) Long studentId,
             Authentication authentication) {
 
-        Long targetId = studentId != null ? studentId : resolveCurrentUserId(authentication);
+        Long targetId = resolveTargetStudentId(studentId, authentication);
         danceGroupService.enrollStudent(groupId, targetId);
         log.info("Student {} enrolled in group {}", targetId, groupId);
         return ResponseEntity.ok().build();
@@ -88,7 +91,7 @@ public class DanceGroupController {
             @RequestParam(required = false) Long studentId,
             Authentication authentication) {
 
-        Long targetId = studentId != null ? studentId : resolveCurrentUserId(authentication);
+        Long targetId = resolveTargetStudentId(studentId, authentication);
         danceGroupService.unenrollStudent(groupId, targetId);
         log.info("Student {} unenrolled from group {}", targetId, groupId);
         return ResponseEntity.ok().build();
@@ -104,10 +107,22 @@ public class DanceGroupController {
         return userService.getCurrentUserInfo(email).id();
     }
 
-    private String extractPrimaryRole(Authentication authentication) {
+    private Long resolveTargetStudentId(Long requestedStudentId, Authentication authentication) {
+        Long currentUserId = resolveCurrentUserId(authentication);
+        if (requestedStudentId == null || requestedStudentId.equals(currentUserId)) {
+            return currentUserId;
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            throw new AccessDeniedException("Only administrators can manage enrollment for another student");
+        }
+        return requestedStudentId;
+    }
+
+    private Set<String> extractRoles(Authentication authentication) {
         return authentication.getAuthorities().stream()
-            .map(GrantedAuthority::getAuthority)
-            .findFirst()
-            .orElse("ROLE_STUDENT");
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
     }
 }

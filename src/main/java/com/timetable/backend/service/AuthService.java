@@ -46,7 +46,7 @@ public class AuthService {
      * <ul>
      *   <li>ADMIN role is rejected with {@link IllegalArgumentException} (HTTP 400).</li>
      *   <li>STUDENT: account is active immediately; dance-specific fields are persisted.</li>
-     *   <li>TEACHER: account starts <em>inactive</em> (pending admin approval);
+     *   <li>TEACHER: account is active immediately;
      *       phone, bio and dance specializations are persisted on the Teacher profile.</li>
      * </ul>
      *

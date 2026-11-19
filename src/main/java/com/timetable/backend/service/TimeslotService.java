@@ -58,6 +58,9 @@ public class TimeslotService {
      */
     @Transactional
     public TimeslotDTO createTimeslot(TimeslotDTO dto) {
+        if (!dto.startTime().isBefore(dto.endTime())) {
+            throw new IllegalArgumentException("Timeslot startTime must be strictly before endTime");
+        }
         timeslotRepository
                 .findByDayOfWeekAndStartTimeAndEndTime(dto.dayOfWeek(), dto.startTime(), dto.endTime())
                 .ifPresent(existing -> {
@@ -80,8 +83,19 @@ public class TimeslotService {
      */
     @Transactional
     public TimeslotDTO updateTimeslot(Long id, TimeslotDTO dto) {
+        if (!dto.startTime().isBefore(dto.endTime())) {
+            throw new IllegalArgumentException("Timeslot startTime must be strictly before endTime");
+        }
         Timeslot timeslot = timeslotRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Timeslot not found with id: " + id));
+        timeslotRepository
+                .findByDayOfWeekAndStartTimeAndEndTime(dto.dayOfWeek(), dto.startTime(), dto.endTime())
+                .filter(existing -> !existing.getId().equals(id))
+                .ifPresent(existing -> {
+                    throw new IllegalArgumentException(
+                            "Timeslot already exists: " + dto.dayOfWeek() + " " + dto.startTime() + "-" + dto.endTime()
+                    );
+                });
 
         timeslot.setDayOfWeek(dto.dayOfWeek());
         timeslot.setStartTime(dto.startTime());

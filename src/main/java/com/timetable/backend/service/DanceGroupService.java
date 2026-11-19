@@ -12,8 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
-
+import java.util.Set;
 /**
  * Service for managing DanceGroup entities and student enrollment.
  */
@@ -114,6 +115,29 @@ public class DanceGroupService {
         };
     }
 
+    /**
+     * Role-set overload that combines taught and enrolled groups for dual-role users.
+     */
+    @Transactional(readOnly = true)
+    public List<DanceGroupDetailsDTO> getMyGroups(Long userId, Set<String> roles) {
+        if (roles == null || roles.isEmpty() || roles.contains("ROLE_ADMIN")) {
+            return getAllGroupsWithDetails(userId);
+        }
+        var merged = new LinkedHashMap<Long, DanceGroupDetailsDTO>();
+        if (roles.contains("ROLE_TEACHER")) {
+            for (DanceGroupDetailsDTO dto : getGroupsForTeacher(userId)) {
+                merged.put(dto.id(), dto);
+            }
+        }
+        if (roles.contains("ROLE_STUDENT")) {
+            for (DanceGroupDetailsDTO dto : getGroupsForStudent(userId)) {
+                merged.putIfAbsent(dto.id(), dto);
+            }
+        }
+        return merged.values().stream()
+                .sorted(Comparator.comparing(DanceGroupDetailsDTO::name))
+                .toList();
+    }
     // ──────────────────────────────────────────────────────────────────
     // Students in a group
     // ──────────────────────────────────────────────────────────────────

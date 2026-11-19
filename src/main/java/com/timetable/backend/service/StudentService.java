@@ -54,6 +54,7 @@ public class StudentService {
             throw new IllegalArgumentException("Password is required for new students");
         }
         student.setRole(studentRole);
+        student.addRole(studentRole);
         Student saved = studentRepository.save(student);
         return studentMapper.toStudentDTO(saved);
     }

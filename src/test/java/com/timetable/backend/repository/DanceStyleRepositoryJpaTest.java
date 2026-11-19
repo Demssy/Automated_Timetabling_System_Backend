@@ -8,6 +8,7 @@ import com.timetable.backend.domain.repository.DanceStyleRepository;
 import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -33,6 +34,9 @@ public class DanceStyleRepositoryJpaTest {
     @Autowired
     TeacherRepository teacherRepository;
 
+    @Autowired
+    EntityManager entityManager;
+
     @Test
     void saveAndFindByNameAndAssociateWithTeacher() {
         DanceStyle salsa = danceStyleRepository.save(new DanceStyle("Salsa"));
@@ -53,13 +57,14 @@ public class DanceStyleRepositoryJpaTest {
         teacher.setUser(savedUser);
         teacher.setMaxDailyHours(5);
         teacher.setColorCode("#ffeecc");
+        // Set the owning side (Teacher.danceStyles) so the join table row is persisted
+        teacher.getDanceStyles().add(salsa);
         Teacher savedTeacher = teacherRepository.save(teacher);
 
-        // associate teacher with dance style
-        salsa.getTeachers().add(savedTeacher);
-        danceStyleRepository.save(salsa);
+        entityManager.flush();
+        entityManager.clear();
 
         var reloaded = danceStyleRepository.findByName("Salsa").orElseThrow();
-        assertThat(reloaded.getTeachers()).isNotEmpty();
+        assertThat(reloaded.getTeachers()).extracting(Teacher::getId).contains(savedTeacher.getId());
     }
 }

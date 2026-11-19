@@ -67,12 +67,15 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     public static final String STUDENT_WEEKLY_AVAILABILITY = "Student scheduled outside weekly availability";
     public static final String TEACHER_UNAVAILABILITY = "Teacher one-time unavailability conflict";
     public static final String STUDENT_UNAVAILABILITY = "Student one-time unavailability conflict";
+    public static final String STUDENT_SUBSCRIPTION = "Student is not subscribed to this teacher";
+    public static final String GROUP_HAS_STUDENT = "Group lesson cannot have a student assigned";
 
     public static final Set<String> MANDATORY_CONSTRAINTS = Set.of(
             ROOM_CONFLICT, ROOM_CAPACITY, PRIVATE_DURING_GROUP, TEACHER_CONFLICT,
             TEACHER_STUDENT_CONFLICT, TEACHER_ATTENDS_OWN_LESSON, STUDENT_CONFLICT,
             TEACHER_WEEKLY_AVAILABILITY, STUDENT_WEEKLY_AVAILABILITY,
-            TEACHER_UNAVAILABILITY, STUDENT_UNAVAILABILITY);
+            TEACHER_UNAVAILABILITY, STUDENT_UNAVAILABILITY,
+            STUDENT_SUBSCRIPTION, GROUP_HAS_STUDENT);
 
     /**
      * Gaps up to this many minutes are considered a normal break between lessons
@@ -440,7 +443,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .forEachIncludingNullVars(Lesson.class)
                 .filter(lesson -> !lesson.isPrivate() && lesson.getStudent() != null)
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Group lesson cannot have a student assigned");
+                .asConstraint(GROUP_HAS_STUDENT);
     }
 
     /**
@@ -453,7 +456,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
                 .filter(lesson -> lesson.isPrivate() && lesson.getStudent() != null)
                 .filter(lesson -> !lesson.getTeacher().getPrivateStudents().contains(lesson.getStudent()))
                 .penalize(HardSoftScore.ofHard(weights.getPhysicalConflictHardWeight()))
-                .asConstraint("Student is not subscribed to this teacher");
+                .asConstraint(STUDENT_SUBSCRIPTION);
     }
 
     /**
@@ -643,9 +646,7 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
      *
      * Encourages scheduling lessons during peak hours (16:00–21:00).
      *
-     * <p>Reward is +10 soft per lesson. Previously +1 was negligible (1% of the +100
-     * assignment reward). At +10 it represents 10% and meaningfully steers the solver
-     * toward evening slots preferred by most students.</p>
+     * <p>Uses {@link SolverWeightsConfig#getRewardPrimeTime()} (default +15 soft per lesson).</p>
      */
     Constraint rewardPrimeTime(ConstraintFactory constraintFactory) {
         return constraintFactory
@@ -781,14 +782,10 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     /**
      * SOFT CONSTRAINT: Student Should Meet Desired Lessons Per Week
      *
-     * <p>Penalizes each lesson the student is missing compared to their desired weekly count.
-     * Only fires when a student has at least one lesson assigned but fewer than desired —
-     * the zero-assigned case is already covered by {@link #rewardStudentAssignment}.
-     * Only applies when {@code desiredLessonsPerWeek} is set ({@code != null}).</p>
+     * <p>Monotonically rewards each assigned private lesson up to the student's
+     * {@code desiredLessonsPerWeek} target: {@code +w * min(count, desired)}.</p>
      *
-     * <p>Weight: {@link SolverWeightsConfig#getPenaltyStudentUnderDesiredLessons()} per
-     * missing lesson (default 50 — half of the assignment reward, so the solver always
-     * gains net by assigning but is also nudged toward filling all desired slots).</p>
+     * <p>Weight: {@link SolverWeightsConfig#getPenaltyStudentUnderDesiredLessons()} (default +35).</p>
      */
     Constraint studentMeetDesiredLessonsPerWeek(ConstraintFactory constraintFactory) {
         return constraintFactory
@@ -830,11 +827,10 @@ public class DanceScheduleConstraintProvider implements ConstraintProvider {
     /**
      * SOFT CONSTRAINT: Teacher Should Meet Desired Lessons Per Week
      *
-     * <p>Penalizes each lesson the teacher is missing compared to their desired weekly count.
-     * Only applies when {@code desiredLessonsPerWeek} is set ({@code != null}).</p>
+     * <p>Monotonically rewards each scheduled lesson up to the teacher's
+     * {@code desiredLessonsPerWeek} target: {@code +w * min(count, desired)}.</p>
      *
-     * <p>Weight: {@link SolverWeightsConfig#getPenaltyTeacherUnderDesiredLessons()} per
-     * missing lesson (default 30).</p>
+     * <p>Weight: {@link SolverWeightsConfig#getPenaltyTeacherUnderDesiredLessons()} (default +25).</p>
      */
     Constraint teacherMeetDesiredLessonsPerWeek(ConstraintFactory constraintFactory) {
         return constraintFactory

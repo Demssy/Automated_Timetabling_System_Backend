@@ -9,19 +9,15 @@ import com.timetable.backend.domain.mapper.StudentMapper;
 import com.timetable.backend.domain.mapper.TeacherMapper;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.DanceStyleRepository;
-import com.timetable.backend.domain.repository.LessonRepository;
-import com.timetable.backend.domain.repository.RoomRepository;
 import com.timetable.backend.domain.repository.RoleRepository;
 import com.timetable.backend.domain.repository.TeacherRepository;
 import com.timetable.backend.domain.repository.UserRepository;
 import com.timetable.backend.domain.repository.WeeklyAvailabilityRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -32,7 +28,6 @@ public class TeacherService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final DanceStyleRepository danceStyleRepository;
-    private final LessonRepository lessonRepository;
     private final WeeklyAvailabilityRepository weeklyAvailabilityRepository;
     private final LessonService lessonService;
     private final TeacherMapper teacherMapper;
@@ -57,8 +52,12 @@ public class TeacherService {
             teacher.getUser().setFullName(request.fullName());
             userRepository.save(teacher.getUser());
         }
-        teacher.setMaxDailyHours(request.maxDailyHours());
-        teacher.setColorCode(request.colorCode());
+        if (request.maxDailyHours() != null) {
+            teacher.setMaxDailyHours(request.maxDailyHours());
+        }
+        if (request.colorCode() != null) {
+            teacher.setColorCode(request.colorCode());
+        }
         teacher.setDesiredLessonsPerWeek(request.desiredLessonsPerWeek());
         if (request.qualifiedStyleIds() != null) {
             Set<Long> requestedStyleIds = new HashSet<>(request.qualifiedStyleIds());

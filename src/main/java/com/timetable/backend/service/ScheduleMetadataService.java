@@ -14,9 +14,14 @@ import com.timetable.backend.domain.repository.SchedulePublicationLockRepository
 import com.timetable.backend.domain.repository.ScheduledLessonRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.List;
 
 @Slf4j
@@ -60,22 +65,21 @@ public class ScheduleMetadataService {
      * Non-admin users can only view PUBLISHED schedules.
      * Admins can view any schedule by ID (e.g. to navigate to it from the admin panel).
      */
+    @Transactional(readOnly = true)
     public ScheduleMetadataDTO getById(Long id) {
         ScheduleMetadata entity = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found with id: " + id));
 
-        // Allow admins to see drafts, but restrict for other roles if needed
-        // For now, let's just remove the hard restriction since Controller has @PreAuthorize
-        // or add a check:
-    /*
-    if (entity.getStatus() != ScheduleStatus.PUBLISHED && !currentUserIsAdmin()) {
-        throw new IllegalArgumentException("Access denied");
-    }
-    */
-
+        if (entity.getStatus() != ScheduleStatus.PUBLISHED && !isCurrentUserAdmin()) {
+            throw new AccessDeniedException("Only administrators can view unpublished schedules");
+        }
         return mapper.toDTO(entity);
     }
-
+    private boolean isCurrentUserAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+    }
     /**
      * Returns a single schedule by ID for admin use — no status restriction.
      */

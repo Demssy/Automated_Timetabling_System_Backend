@@ -1,25 +1,14 @@
 package com.timetable.backend.integration;
 
-import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import com.timetable.backend.domain.dto.CancelLessonRequest;
 import com.timetable.backend.domain.dto.CreateLessonRequest;
-import com.timetable.backend.domain.dto.TimeslotDTO;
 import com.timetable.backend.domain.dto.UpdateLessonRequest;
-import com.timetable.backend.domain.dto.WeeklyAvailabilityRequest;
-import com.timetable.backend.domain.exception.ScheduleConflictException;
 import com.timetable.backend.domain.model.*;
 import com.timetable.backend.domain.repository.*;
-import com.timetable.backend.service.DanceGroupService;
 import com.timetable.backend.service.LessonService;
 import com.timetable.backend.service.ScheduleMetadataService;
-import com.timetable.backend.service.ScheduleScoreEvaluationService;
 import com.timetable.backend.service.ScheduledLessonCancellationService;
-import com.timetable.backend.service.TimeslotService;
-import com.timetable.backend.service.WeeklyAvailabilityService;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,26 +16,15 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.reset;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -64,18 +42,12 @@ class PublishedEditRollbackIntegrationTest {
     @Autowired private LessonService lessonService;
     @Autowired private ScheduleMetadataService metadataService;
     @Autowired private ScheduledLessonCancellationService cancellationService;
-    @Autowired private WeeklyAvailabilityService weeklyAvailabilityService;
-    @Autowired private TimeslotService timeslotService;
-    @Autowired private DanceGroupService danceGroupService;
     @Autowired private TransactionTemplate transactions;
     @Autowired private JdbcTemplate jdbc;
-    @MockitoSpyBean private ScheduleScoreEvaluationService evaluator;
 
     private record Fixture(Long schedule, Long firstUser, Long secondUser, Long admin,
                            Long firstGroup, Long secondGroup, Long firstLesson, Long secondLesson,
                            Long firstSlot, Long overlapSlot, Long secondSlot, Long room, Long secondSnapshot) {}
-
-    private enum SharedFact { AVAILABILITY, TIMESLOT, GROUP_MEMBERSHIP }
 
     @Test
     void rejectedPublishedCreateMoveAndRestoreLeaveCommittedStateUnchanged() {
@@ -132,10 +104,6 @@ class PublishedEditRollbackIntegrationTest {
             transactions.executeWithoutResult(status -> cleanup(fixture));
         }
     }
-
-    @ParameterizedTest
-    @EnumSource(SharedFact.class)
-    // Opt in on MySQL: shared-fact mutations do not yet participate in the publication lock.
 
     private void assertScheduleUnchanged(Long id, String score, String explanation, long revision) {
         ScheduleMetadata schedule = schedules.findById(id).orElseThrow();

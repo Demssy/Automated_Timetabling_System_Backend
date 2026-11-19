@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 
@@ -30,16 +31,16 @@ public class JwtServiceTest {
 
     @Test
     void expiredTokenIsInvalid() {
-        // create an expired token manually using same secret
-        String secret = System.getProperty("jwt.test.secret");
-        if (secret == null) {
-            // fallback to the test property via jwtService by generating token and then tampering expiry is complex
-            // Instead we assert that generated token has expiration in future and is valid
-            UserDetails user = User.withUsername("u2@example.com").password("password").authorities("ROLE_USER").build();
-            String token = jwtService.generateToken(user);
-            assertThat(jwtService.isTokenValid(token, user)).isTrue();
-            return;
-        }
+        // Build an isolated JwtService with a negative TTL to issue an already-expired token
+        JwtService expiredTokenIssuer = new JwtService();
+        ReflectionTestUtils.setField(expiredTokenIssuer, "secret",
+                ReflectionTestUtils.getField(jwtService, "secret"));
+        ReflectionTestUtils.setField(expiredTokenIssuer, "expirationMs", -1_000L);
+
+        UserDetails user = User.withUsername("u2@example.com").password("password").authorities("ROLE_USER").build();
+        String expiredToken = expiredTokenIssuer.generateToken(user);
+
+        assertThat(jwtService.isTokenValid(expiredToken)).isFalse();
     }
 }
 

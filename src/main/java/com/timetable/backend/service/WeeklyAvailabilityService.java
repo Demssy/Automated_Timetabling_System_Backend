@@ -84,6 +84,7 @@ public class WeeklyAvailabilityService {
     @Transactional
     public WeeklyAvailabilityDTO createSlot(Long userId, WeeklyAvailabilityRequest request) {
         AbstractUser user = loadUser(userId);
+        validateTimeRange(request.startTime(), request.endTime());
 
         WeeklyAvailability entity = new WeeklyAvailability();
         entity.setUser(user);
@@ -106,6 +107,7 @@ public class WeeklyAvailabilityService {
     public WeeklyAvailabilityDTO updateSlot(Long slotId, WeeklyAvailabilityRequest request) {
         WeeklyAvailability entity = repository.findById(slotId)
                 .orElseThrow(() -> new IllegalArgumentException("Availability slot not found: " + slotId));
+        validateTimeRange(request.startTime(), request.endTime());
 
         entity.setDayOfWeek(request.dayOfWeek());
         entity.setStartTime(request.startTime());
@@ -142,6 +144,7 @@ public class WeeklyAvailabilityService {
     }
 
     private WeeklyAvailability toEntity(AbstractUser user, WeeklyAvailabilityDTO dto, AvailabilityRole role) {
+        validateTimeRange(dto.startTime(), dto.endTime());
         WeeklyAvailability entity = new WeeklyAvailability();
         entity.setUser(user);
         entity.setDayOfWeek(dto.dayOfWeek());
@@ -149,6 +152,12 @@ public class WeeklyAvailabilityService {
         entity.setEndTime(dto.endTime());
         entity.setAvailabilityRole(role);
         return entity;
+    }
+
+    private void validateTimeRange(java.time.LocalTime startTime, java.time.LocalTime endTime) {
+        if (startTime == null || endTime == null || !startTime.isBefore(endTime)) {
+            throw new IllegalArgumentException("Start time must be strictly before end time");
+        }
     }
 
     private AbstractUser loadUser(Long userId) {

@@ -90,9 +90,8 @@ public class SolverProblemLoaderService {
         });
 
         // Initialize DanceGroup.enrolledStudents lazy collections for all group lessons.
-        // The Solver does NOT use this collection, but Hibernate may try to access the proxy
-        // during deep-clone serialization — initializing it here prevents any potential
-        // LazyInitializationException outside the transaction boundary.
+        // Constraints inspect enrolledStudents for studentConflict, dual-role conflict, and
+        // self-teaching checks; eager initialization prevents LazyInitializationException outside the session.
         lessons.stream()
             .filter(lesson -> lesson.getDanceGroup() != null)
             .map(lesson -> lesson.getDanceGroup().getEnrolledStudents())

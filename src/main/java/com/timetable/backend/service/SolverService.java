@@ -37,7 +37,6 @@ public class SolverService {
     private final ScheduleMetadataRepository scheduleMetadataRepository;
     private final SolutionPersistenceService persistenceService;
     private final ScheduleScoreEvaluationService scoreEvaluationService;
-    private final WeeklyAvailabilityRepository weeklyAvailabilityRepository;
     private final TeacherRepository teacherRepository;
 
     /**
@@ -87,29 +86,6 @@ public class SolverService {
         return true;
     }
 
-    /**
-     * Retrieves the best solution found so far (blocking call).
-     * Only use this for testing or when you need the solution immediately.
-     *
-     * @param scheduleId the schedule identifier
-     * @return the best solution found, or null if not available
-     */
-    @SuppressWarnings("unused")
-    public DanceSchedule getBestSolution(Long scheduleId) {
-        SolverStatus status = runtimeRegistry.status(scheduleId);
-
-        if (status == SolverStatus.NOT_SOLVING) {
-            log.warn("Solver is not running for schedule {}", scheduleId);
-            return null;
-        }
-
-        // For active/scheduled solving, we can't easily get intermediate results in 1.6.0
-        // Best practice is to wait for completion and use saved solution from DB
-        log.info("Solver is still running for schedule {}. Status: {}", scheduleId, status);
-        return null;
-    }
-
-
     @Transactional(readOnly = true)
     public List<ScheduledLesson> getCurrentSolutionFromDatabase(Long scheduleId) {
         return scheduledLessonRepository.findByScheduleIdOrderByIdAsc(scheduleId);
@@ -146,25 +122,25 @@ public class SolverService {
     }
 
     /**
-     * Evaluates the current snapshots and shared problem facts without persisting the result.
+     * Evaluates the current snapshots and synchronizes score metadata for DRAFT schedules.
      *
      * @param scheduleId the schedule identifier
      * @return {@link ScoreExplanationResponse} with total score and per-constraint breakdown
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public ScoreExplanationResponse getScoreExplanation(Long scheduleId) {
         return scoreEvaluationService.explain(scheduleId);
     }
 
     /**
-     * Returns students who received fewer lessons than their declared
-     * weekly availability windows suggest they wanted.
+     * Returns subscribed students who received fewer assigned private lessons
+     * than their explicit {@code desiredLessonsPerWeek}.
      *
      * <p>Algorithm:
      * <ol>
      *   <li>Load all teachers and collect their subscribed students into a unique set.</li>
-     *   <li>For each student count their {@code WeeklyAvailability} rows = desired slots.</li>
-     *   <li>Count their {@code ScheduledLesson} rows for this schedule = assigned lessons.</li>
+     *   <li>Count non-cancelled assigned {@code ScheduledLesson} rows for each student.</li>
+     *   <li>Compare assigned lessons against {@code desiredLessonsPerWeek}.</li>
      *   <li>Return students where assigned &lt; desired, sorted by missing count descending.</li>
      * </ol>
      * </p>

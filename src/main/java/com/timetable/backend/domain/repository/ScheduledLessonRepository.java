@@ -25,6 +25,7 @@ public interface ScheduledLessonRepository extends JpaRepository<ScheduledLesson
         FROM ScheduledLesson sl
         WHERE sl.schedule.id = :scheduleId
           AND sl.student IS NOT NULL
+          AND sl.cancelled = false
         GROUP BY sl.student.id
         """)
     List<Object[]> countAssignedLessonsByStudent(@Param("scheduleId") Long scheduleId);
